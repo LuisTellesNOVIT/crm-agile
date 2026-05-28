@@ -1,0 +1,13 @@
+# Lo que NO sube al deploy (Vercel reinstala deps en su build)
+node_modules
+.react-router
+build
+.vercel
+
+# Secrets — Vercel inyecta env vars desde su dashboard
+.env
+.env.local
+.env.*.local
+
+# Drive sync junk
+.DS_Store

@@ -1,0 +1,16 @@
+.DS_Store
+
+# Env (Neon, Anthropic keys, etc — NUNCA commitear)
+.env
+.env.local
+.env.*.local
+
+# Deps
+/node_modules/
+
+# React Router build artifacts
+/.react-router/
+/build/
+
+# Vercel
+.vercel

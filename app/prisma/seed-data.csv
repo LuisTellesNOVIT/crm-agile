@@ -1,0 +1,40 @@
+ID,Cliente,Estado,Proyecto,empresa,setup,mensualidad,12 meses,24 meses,36 meses
+1,Grandia,Ganado,SMIFAST SCTR,NOVIT,"US$19,800","US$2,700","US$32,400","US$64,800","US$97,200"
+2,SANNA,Firma del Contrato,IAFAS ODOO 19,NOVIT,"US$85,500","US$3,700","US$44,400","US$88,800","US$133,200"
+3,La Positiva,Firma del Contrato,SHARKi HIS,Sharky,"US$87,000","US$3,200","US$38,400","US$76,800","US$115,200"
+4,Clinia Peruano Americana,Ganado,Anteproyecto,NOVIT,"US$6,500",,,,
+5,Clinia Peruano Americana,Negociación,SHARKI HIS,NOVIT,"US$180,000","US$4,900","US$58,800","US$117,600","US$176,400"
+6,Wisar Salud,Perdido,SHARKI HIS,SHARKY,"US$32,000","US$1,650","US$19,800","US$39,600","US$59,400"
+7,Ofatlmica,Perdido,SHARKI HIS,SHARKY,"$31,000","US$2,750","US$33,000","US$66,000","US$99,000"
+8,Stella Maris,Perdido,SHARKI HIS,SHARKY,"$89,500","US$1,233","US$14,796","US$29,592","US$44,388"
+9,Mapfre,Propuesta,Web Suscripciones,NOVIT,"US$12,794","US$12,794","US$140,735",,
+10,TRECCA,Perdido,TRECCA Etapa 1,NOVIT,"$279,706",,,,
+11,TRECCA,Perdido,TRECCA Etapa 2,NOVIT,"$847,000",,,,
+12,UV3,Negociación,Farmacia UV3 Farma,SHARKY,$700.00,US$300,"US$3,600","US$7,200","US$10,800"
+13,Mapfre,Propuesta,Oracle Forms,NOVIT,"US$358,235",,,,
+14,Mapfre,Propuesta,Migracion Aplicaciones Angular,NOVIT,"US$35,824","US$35,824","US$394,059",,
+15,RED SALVA,Propuesta,SITEDS TEDEF CONVENIOS,SHARKY,"US$2,000",,,,
+16,RED SALVA,Ganado,FISIOTERAPIA,SHARKY,US$700,US$100,"US$1,200","US$2,400","US$3,600"
+17,SOLIDARIDAD,Demo,HIS Centro Médico,SHARKY,"US$3,000","US$1,000","US$12,000","US$24,000","US$36,000"
+18,Mapfre,Ganado,OutSourcing Yennifer Lara,NOVIT,,"US$3,529","US$38,824",,
+19,Becerra Brokers,Demo,Sistema de Brokers,SHARKY,"US$26,000","US$2,500","US$30,000","US$60,000","US$90,000"
+20,Mapfre,Perdido,OutSourcing Brayan Cespedes,NOVIT,US$0,"US$3,571","US$42,857",,
+21,Mapfre,Ganado,Modernización / Reingenieria Sistema Power- Centros Médicos Plataforma Cloud,NOVIT,"US$18,394",,,,
+22,Mapfre,Propuesta,Delivery de Medicamentos,NOVIT,"US$74,571",,,,
+24,Crecer Seguros,Demo,Diagnostico SST,SHARKY,"US$7,000",US$400,"US$4,800","US$9,600","US$14,400"
+25,Solidaridad,Perdido,Sharky HIS 50 Usuarios,SHARKY,"US$14,000","US$1,300","US$15,600","US$31,200","US$46,800"
+26,Stella Maris,Propuesta,a Plataforma de Gestión Operativa de Leads Cirugías y Post-Operatorio,NOVIT,"US$9,857",US$557,"US$6,686","US$13,371","US$20,057"
+27,Mapfre,Perdido,OutSourcing Roberto Alvarado,NOVIT,US$0,"US$3,571","US$42,857",,
+28,Grandia,Propuesta,Sistema de IAFAS,NOVIT,"US$78,000","US$4,500","US$54,000","US$108,000","US$162,000"
+29,Mapfre,Propuesta,Sistema HIS,NOVIT,"US$226,811","US$7,243","US$86,916","US$173,832","US$260,748"
+30,Mapfre,Negociación,Migracion Oracle Forms,NOVIT,"US$397,714",,,,
+31,Mapfre,Negociación,Migracion de OIM,NOVIT,"US$315,686",,,,
+32,Mapfre,Ganado,DESCARGA MASIVA PÓLIZAS TODOS LOS RAMOS - REQUERIMIENTOS GUBERNAMENTALES,NOVIT,"US$7,842",,,,
+33,Becerra Brokers,Firma del Contrato,Automatización de Agentes,SHARKY,"US$10,000",US$750,"US$9,000","US$18,000","US$27,000"
+34,INFINITY,Propuesta,Auditoria Medica,NOVIT,US$600,US$300,"US$3,600","US$7,200","US$10,800"
+35,Monteoro,Perdido,ERP ODOO 19,NOVIT,"US$21,000",US$300,"US$3,600","US$7,200","US$10,800"
+36,lcousine.com,Propuesta,ERP ODOO 19,NOVIT,"US$2,000",US$500,"US$6,000","US$12,000","US$18,000"
+37,Mapfre,Propuesta,Fondo de Inversion,NOVIT,"US$59,135",,,,
+38,Grandia,Propuesta,Capa de Integración Core → Odoo,NOVIT,"US$2,600",,,,
+39,AVIVA,Perdido,Migrar la cuenta del gestor documental a un plan de pago,NOVIT,"US$4,286",,,,
+40,La Positiva,Propuesta,Farmadelivery,NOVIT,"US$60,000",,,,

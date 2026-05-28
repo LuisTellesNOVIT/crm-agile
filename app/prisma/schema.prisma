@@ -1,0 +1,235 @@
+// CRM Agile — Prisma schema
+// Fuente: el visor en app/routes/schema.tsx + ajustes para los datos del sheet.
+//
+// Pipeline stages: ahora son CRUD-able por workspace (tabla PipelineStage).
+// El default es discovery → qualified → proposal → negotiation → signing → won/lost
+// pero el usuario puede agregar/renombrar/reordenar/eliminar.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Channel {
+  wa
+  email
+  linkedin
+  call
+  note
+  mention
+}
+
+model Workspace {
+  id         String  @id @default(cuid())
+  slug       String  @unique // "novit" | "sharky"
+  name       String
+  tagline    String?
+  brandColor String  @default("#2563eb")
+  currency   String  @default("USD")
+  createdAt  DateTime @default(now())
+
+  // ───── SUNAT — Información tributaria del contribuyente ─────
+  ruc                    String?  @unique // 11 dígitos
+  razonSocial            String?
+  nombreComercial        String?
+  estado                 String?  // ACTIVO | SUSPENDIDO TEMPORAL | BAJA DE OFICIO | BAJA DEFINITIVA
+  condicion              String?  // HABIDO | NO HALLADO | NO HABIDO
+  tipoContribuyente      String?  // SOCIEDAD ANONIMA CERRADA, EIRL, etc.
+  ciiu                   String?  // código CIIU (4 dígitos)
+  ciiuDescripcion        String?
+  domicilioFiscal        String?
+  distrito               String?
+  provincia              String?
+  departamento           String?
+  ubigeo                 String?  // código INEI (6 dígitos)
+  fechaInscripcion       DateTime?
+  fechaInicioActividades DateTime?
+  representanteLegal     String?
+  representanteDni       String?
+  representanteCargo     String?
+  telefono               String?
+  email                  String?
+  trabajadoresActivos    Int?
+  sistemaEmision         String?  // MANUAL | COMPUTARIZADO | ELECTRÓNICO
+  sistemaContabilidad    String?  // MANUAL | COMPUTARIZADO | MANUAL/COMPUTARIZADO
+  notas                  String?
+
+  users          User[]
+  companies      Company[]
+  deals          Deal[]
+  pipelineStages PipelineStage[]
+}
+
+// PipelineStage — etapas del pipeline editables por workspace.
+// Deal.stage referencia `key` por nombre (string).
+model PipelineStage {
+  id          String  @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  key         String  // identificador estable (no cambia al renombrar label)
+  label       String  // display name editable
+  color       String  // hex
+  probability Float   @default(0.5) // 0..1
+  position    Int     // sort order
+  isWon       Boolean @default(false)
+  isLost      Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@unique([workspaceId, key])
+  @@index([workspaceId, position])
+}
+
+model User {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  name        String
+  role        String   // job title — "Account Executive", "Admin", etc.
+  initials    String   // "MP", "AV", "LT", etc.
+  color       String   @default("#2563eb")
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
+  deals       Deal[]
+  createdAt   DateTime @default(now())
+
+  // Auth fields
+  passwordHash String?
+  permissions  String?  // "admin" | null = read-only member
+
+  @@index([workspaceId])
+}
+
+model Company {
+  id          String  @id @default(cuid())
+  name        String
+  industry    String?
+  website     String?
+  employees   String?
+  tier        String?
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
+  deals       Deal[]
+  contacts    Contact[]
+  createdAt   DateTime @default(now())
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
+}
+
+model Contact {
+  id        String  @id @default(cuid())
+  name      String
+  role      String?
+  email     String
+  phone     String?
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+
+  @@index([companyId])
+}
+
+model Deal {
+  id               String   @id @default(cuid())
+  publicId         String   @unique // "NOVIT-0012"
+  name             String
+  value            Float    // Setup / one-time fee (USD)
+  mrr              Float?   // Monthly recurring revenue (USD), si isRecurring
+  isRecurring      Boolean  @default(false)
+  stage            String   // referencia PipelineStage.key (no enum: stages son CRUD por workspace)
+  probability      Float    // 0..1, derivada de stage
+  ai               Int      // 0..100 AI score
+  source           String?  // fb_ads | linkedin | web | referral
+  createdAt        DateTime @default(now())
+  estimatedCloseAt DateTime
+  closedAt         DateTime?
+  lastActivityAt   DateTime @default(now())
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+
+  ownerId String
+  owner   User @relation(fields: [ownerId], references: [id])
+
+  activities    Activity[]
+  files         File[]
+  conversations Conversation[]
+
+  @@index([workspaceId, stage])
+  @@index([companyId])
+  @@index([ownerId])
+}
+
+model Activity {
+  id     String   @id @default(cuid())
+  dealId String
+  deal   Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  type   String
+  text   String
+  who    String
+  at     DateTime @default(now())
+
+  @@index([dealId])
+}
+
+model File {
+  id        String   @id @default(cuid())
+  dealId    String
+  deal      Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  name      String
+  mime      String
+  size      Int
+  url       String
+  createdAt DateTime @default(now())
+
+  @@index([dealId])
+}
+
+model Conversation {
+  id        String    @id @default(cuid())
+  dealId    String
+  deal      Deal      @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  channel   Channel
+  messages  Message[]
+  createdAt DateTime  @default(now())
+
+  @@index([dealId])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  direction      String       // "in" | "out"
+  text           String
+  at             DateTime     @default(now())
+
+  @@index([conversationId])
+}
+
+model Template {
+  id          String  @id @default(cuid())
+  workspaceId String
+  channel     Channel
+  name        String
+  description String
+  body        String
+  uses        Int     @default(0)
+  replyRate   Int     @default(0)
+}
+
+model Sequence {
+  id          String  @id @default(cuid())
+  workspaceId String
+  name        String
+  active      Boolean @default(true)
+  nodes       Json
+}

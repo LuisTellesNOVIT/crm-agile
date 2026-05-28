@@ -1,0 +1,46 @@
+# ── Dependencies ──────────────────────────────────────
+node_modules/
+.pnp
+.pnp.js
+
+# ── Build artifacts ───────────────────────────────────
+.next/
+.react-router/
+build/
+dist/
+.vercel/
+.turbo/
+.cache/
+
+# ── Prisma ────────────────────────────────────────────
+app/prisma/migrations/dev.db*
+app/node_modules/.prisma/
+
+# ── Secrets (CRÍTICO — nunca subir) ──────────────────
+.env
+.env.local
+.env*.local
+*.pem
+*.key
+
+# ── Logs ──────────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ── Editor / OS junk ──────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ── Misc ──────────────────────────────────────────────
+.npm
+.eslintcache
+*.tsbuildinfo
+next-env.d.ts
+coverage/
