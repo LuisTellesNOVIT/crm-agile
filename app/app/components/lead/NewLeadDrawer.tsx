@@ -1,20 +1,31 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useFetcher } from "react-router";
 import { Icon } from "../shell/Icon";
 import { Chip } from "../ui/Chip";
-import { useActiveWorkspace, useAppStore } from "../../lib/store";
+import { useActiveWorkspace, useCurrentUser } from "../../lib/store";
 
-const STEPS = ["Contacto", "Empresa", "Detalles", "Confirmar"] as const;
+/**
+ * NewLeadDrawer — formulario de un solo paso para crear un lead completo
+ * (Company + Contact + Deal) en una sola transacción contra /api/lead-create.
+ *
+ * - Teléfono con prefijo +51 PE por default (bandera + número visible).
+ * - RUC opcional (11 dígitos, validado).
+ * - Workspace del lead = workspace activo (o NOVIT si está en "Todas").
+ * - Owner del deal = usuario logueado.
+ * - Al crear: refresca loaders → aparece de inmediato en Pipeline / Cliente 360.
+ */
 
 type FormState = {
   firstName: string;
   lastName: string;
   email: string;
-  phone: string;
-  company: string;
+  phoneLocal: string; // sólo el número local (sin +51)
+  companyName: string;
+  ruc: string;
   industry: string;
-  source: "fb_ads" | "linkedin" | "web" | "referral" | "";
+  source: string;
   estimatedValue: string;
-  owner: string;
+  dealName: string;
   stage: string;
 };
 
@@ -22,298 +33,434 @@ const INITIAL: FormState = {
   firstName: "",
   lastName: "",
   email: "",
-  phone: "",
-  company: "",
+  phoneLocal: "",
+  companyName: "",
+  ruc: "",
   industry: "",
   source: "",
   estimatedValue: "",
-  owner: "",
-  stage: "qualified",
+  dealName: "",
+  stage: "",
 };
+
+type ActionResult = { ok?: boolean; error?: string; dealId?: string; dealName?: string; company?: string; message?: string };
 
 export function NewLeadDrawer({ onClose }: { onClose: () => void }) {
   const ws = useActiveWorkspace();
-  const [step, setStep] = useState(0);
-  const [done, setDone] = useState(false);
+  const currentUser = useCurrentUser();
+  const fetcher = useFetcher<ActionResult>();
   const [form, setForm] = useState<FormState>(INITIAL);
   const update = (patch: Partial<FormState>) => setForm((f) => ({ ...f, ...patch }));
 
-  const submit = () => {
-    setDone(true);
-    // Real impl: dispatch a store action to push a new deal. Stub here.
-  };
+  const busy = fetcher.state !== "idle";
+  const result = fetcher.data;
 
-  const reset = () => {
-    setForm(INITIAL);
-    setStep(0);
-    setDone(false);
+  // Workspace activo: si está en "all", usamos el del usuario logueado (o novit).
+  const targetWorkspace =
+    ws.isAll
+      ? currentUser?.workspaceSlug ?? "novit"
+      : ws.id;
+
+  // Stage default = primer stage del workspace que no sea won/lost
+  const defaultStage =
+    ws.stages.find((s) => s.id !== "won" && s.id !== "lost")?.id ?? "qualified";
+
+  // Cerrar drawer 1.5s después del éxito (para que vea el mensaje)
+  useEffect(() => {
+    if (result?.ok) {
+      const t = window.setTimeout(() => {
+        setForm(INITIAL);
+        onClose();
+      }, 1500);
+      return () => window.clearTimeout(t);
+    }
+  }, [result, onClose]);
+
+  const onSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    // El número final es +51 + lo que tipeó (limpiamos espacios/guiones)
+    const phoneClean = form.phoneLocal.replace(/\D/g, "");
+    const phoneFull = phoneClean ? `+51${phoneClean}` : "";
+
+    fetcher.submit(
+      {
+        workspaceSlug: targetWorkspace,
+        firstName: form.firstName,
+        lastName: form.lastName,
+        email: form.email,
+        phone: phoneFull,
+        companyName: form.companyName,
+        ruc: form.ruc,
+        industry: form.industry,
+        source: form.source,
+        estimatedValue: form.estimatedValue || "0",
+        stage: form.stage || defaultStage,
+        dealName: form.dealName,
+      },
+      { method: "POST", action: "/api/lead-create" },
+    );
   };
 
   return (
     <div className="drawer-backdrop" onClick={onClose}>
       <aside
-        className="ai-drawer"
-        style={{ width: "min(520px, 100vw)" }}
+        className="ai-drawer new-lead-drawer"
+        style={{ width: "min(560px, 100vw)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <header className="ai-drawer__head">
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <Icon name="plus" size={14} />
             <span style={{ fontWeight: 600 }}>Nuevo lead</span>
-            <Chip tone="accent">{ws.id}</Chip>
+            <Chip tone="accent">{targetWorkspace.toUpperCase()}</Chip>
           </div>
           <button type="button" className="btn btn--icon" onClick={onClose} aria-label="Cerrar">
             ×
           </button>
         </header>
 
-        {!done && (
-          <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border-2)" }}>
-            <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-              {STEPS.map((label, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", flex: 1, minWidth: 0 }}>
-                  <div
-                    style={{
-                      width: 22,
-                      height: 22,
-                      borderRadius: 11,
-                      background: i <= step ? "var(--accent)" : "var(--bg-3)",
-                      color: i <= step ? "var(--accent-fg)" : "var(--fg-3)",
-                      display: "grid",
-                      placeItems: "center",
-                      fontSize: 10,
-                      fontWeight: 600,
-                      flex: "0 0 auto",
-                    }}
-                  >
-                    {i + 1}
-                  </div>
-                  <div style={{ marginLeft: 8, fontSize: "var(--fs-xs)", color: i === step ? "var(--fg)" : "var(--fg-3)", flex: 1, minWidth: 0 }}>
-                    {label}
-                  </div>
-                  {i < STEPS.length - 1 && (
-                    <div style={{ height: 1, flex: 1, background: "var(--border-2)" }} />
-                  )}
-                </div>
-              ))}
+        {result?.ok ? (
+          /* ─── Estado éxito ─── */
+          <div className="lead-success">
+            <div className="lead-success__icon">✓</div>
+            <div className="lead-success__title">Lead creado</div>
+            <div className="lead-success__sub mono">
+              {result.dealId} · {result.company}
+            </div>
+            <div className="lead-success__msg">
+              {result.message ?? "Lo encontrarás en el Pipeline."}
             </div>
           </div>
-        )}
+        ) : (
+          /* ─── Form ─── */
+          <form onSubmit={onSubmit} className="lead-form">
+            <div className="lead-form__section">
+              <h3>Contacto</h3>
+              <div className="lead-form__row">
+                <label className="lead-form__field" style={{ flex: 1 }}>
+                  <span>Nombre *</span>
+                  <input
+                    type="text"
+                    required
+                    autoFocus
+                    value={form.firstName}
+                    onChange={(e) => update({ firstName: e.target.value })}
+                    placeholder="Luis"
+                  />
+                </label>
+                <label className="lead-form__field" style={{ flex: 1 }}>
+                  <span>Apellido</span>
+                  <input
+                    type="text"
+                    value={form.lastName}
+                    onChange={(e) => update({ lastName: e.target.value })}
+                    placeholder="Telles Atto"
+                  />
+                </label>
+              </div>
 
-        <div className="ai-drawer__msgs" style={{ gap: 12 }}>
-          {done ? (
-            <Success form={form} onAnother={reset} onClose={onClose} />
-          ) : (
-            <>
-              {step === 0 && <Step1 form={form} update={update} />}
-              {step === 1 && <Step2 form={form} update={update} />}
-              {step === 2 && <Step3 form={form} update={update} owners={Object.entries(ws.owners)} />}
-              {step === 3 && <Step4 form={form} stages={ws.stages} />}
-            </>
-          )}
-        </div>
+              <label className="lead-form__field">
+                <span>Email *</span>
+                <input
+                  type="email"
+                  required
+                  value={form.email}
+                  onChange={(e) => update({ email: e.target.value })}
+                  placeholder="luis@empresa.com"
+                />
+              </label>
 
-        {!done && (
-          <footer className="ai-drawer__input" style={{ justifyContent: "space-between", alignItems: "center" }}>
-            <button
-              type="button"
-              className="btn btn--ghost"
-              onClick={() => setStep((s) => Math.max(0, s - 1))}
-              disabled={step === 0}
-            >
-              Atrás
-            </button>
-            {step < STEPS.length - 1 ? (
-              <button
-                type="button"
-                className="btn btn--primary"
-                onClick={() => setStep((s) => s + 1)}
-                disabled={
-                  (step === 0 && (!form.firstName || !form.email)) ||
-                  (step === 1 && !form.company) ||
-                  (step === 2 && !form.owner)
-                }
-              >
-                Siguiente
-              </button>
-            ) : (
-              <button type="button" className="btn btn--primary" onClick={submit}>
-                Crear lead
-              </button>
+              <label className="lead-form__field">
+                <span>WhatsApp / Celular</span>
+                <div className="lead-form__phone">
+                  <span className="lead-form__phone-prefix" aria-label="Perú">
+                    <span className="lead-form__flag" aria-hidden="true">🇵🇪</span>
+                    <span className="mono">+51</span>
+                  </span>
+                  <input
+                    type="tel"
+                    inputMode="numeric"
+                    value={form.phoneLocal}
+                    onChange={(e) => update({ phoneLocal: e.target.value.replace(/\D/g, "").slice(0, 9) })}
+                    placeholder="999 999 999"
+                    maxLength={9}
+                  />
+                </div>
+                <small>Sólo el número, 9 dígitos. El prefijo +51 se agrega automáticamente.</small>
+              </label>
+            </div>
+
+            <div className="lead-form__section">
+              <h3>Empresa</h3>
+              <div className="lead-form__row">
+                <label className="lead-form__field" style={{ flex: 2 }}>
+                  <span>Razón social *</span>
+                  <input
+                    type="text"
+                    required
+                    value={form.companyName}
+                    onChange={(e) => update({ companyName: e.target.value })}
+                    placeholder="Mapfre Perú S.A."
+                  />
+                </label>
+                <label className="lead-form__field" style={{ flex: 1 }}>
+                  <span>RUC</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={form.ruc}
+                    onChange={(e) => update({ ruc: e.target.value.replace(/\D/g, "").slice(0, 11) })}
+                    placeholder="20512345678"
+                    maxLength={11}
+                    className="mono"
+                  />
+                </label>
+              </div>
+
+              <label className="lead-form__field">
+                <span>Industria / Sector</span>
+                <input
+                  type="text"
+                  value={form.industry}
+                  onChange={(e) => update({ industry: e.target.value })}
+                  placeholder="Seguros, Banca, Salud, Retail…"
+                />
+              </label>
+            </div>
+
+            <div className="lead-form__section">
+              <h3>Oportunidad</h3>
+              <label className="lead-form__field">
+                <span>Nombre del trato</span>
+                <input
+                  type="text"
+                  value={form.dealName}
+                  onChange={(e) => update({ dealName: e.target.value })}
+                  placeholder="(opcional — sino: 'Empresa · Nueva oportunidad')"
+                />
+              </label>
+
+              <div className="lead-form__row">
+                <label className="lead-form__field" style={{ flex: 1 }}>
+                  <span>Etapa inicial</span>
+                  <select
+                    value={form.stage || defaultStage}
+                    onChange={(e) => update({ stage: e.target.value })}
+                  >
+                    {ws.stages
+                      .filter((s) => s.id !== "won" && s.id !== "lost")
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>{s.label}</option>
+                      ))}
+                  </select>
+                </label>
+                <label className="lead-form__field" style={{ flex: 1 }}>
+                  <span>Valor estimado (USD)</span>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    step="100"
+                    value={form.estimatedValue}
+                    onChange={(e) => update({ estimatedValue: e.target.value })}
+                    placeholder="50000"
+                    className="mono"
+                  />
+                </label>
+              </div>
+
+              <label className="lead-form__field">
+                <span>Canal de origen</span>
+                <select
+                  value={form.source}
+                  onChange={(e) => update({ source: e.target.value })}
+                >
+                  <option value="">— (sin definir)</option>
+                  <option value="referral">Referido</option>
+                  <option value="linkedin">LinkedIn</option>
+                  <option value="web">Sitio web</option>
+                  <option value="fb_ads">Facebook Ads</option>
+                  <option value="outbound">Outbound</option>
+                  <option value="event">Evento</option>
+                  <option value="other">Otro</option>
+                </select>
+              </label>
+            </div>
+
+            {result?.error && (
+              <div className="lead-form__error" role="alert">
+                ⚠ {result.error}
+              </div>
             )}
-          </footer>
+
+            <footer className="lead-form__foot">
+              <button type="button" className="btn" onClick={onClose} disabled={busy}>
+                Cancelar
+              </button>
+              <button type="submit" className="btn btn--primary" disabled={busy}>
+                {busy ? "Creando…" : "Crear lead"}
+              </button>
+            </footer>
+          </form>
         )}
+
+        <style>{`
+          .new-lead-drawer .ai-drawer__head { border-bottom: 1px solid var(--border-2); }
+          .lead-form {
+            padding: 16px 18px 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+            overflow-y: auto;
+          }
+          .lead-form__section {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding-bottom: 14px;
+            border-bottom: 1px solid var(--border-2);
+          }
+          .lead-form__section:last-of-type { border-bottom: 0; padding-bottom: 0; }
+          .lead-form__section h3 {
+            font-size: 11px;
+            font-family: var(--font-mono);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--fg-3);
+            margin: 0 0 4px;
+          }
+          .lead-form__row {
+            display: flex;
+            gap: 10px;
+          }
+          .lead-form__field {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+          }
+          .lead-form__field > span {
+            font-size: 11px;
+            color: var(--fg-3);
+            font-weight: 500;
+          }
+          .lead-form__field > small {
+            font-size: 10px;
+            color: var(--fg-4);
+            margin-top: 2px;
+          }
+          .lead-form__field input,
+          .lead-form__field select {
+            padding: 8px 10px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            background: var(--bg);
+            color: var(--fg);
+            font: inherit;
+            font-size: 13.5px;
+            outline: none;
+            transition: border-color .12s, box-shadow .12s;
+          }
+          .lead-form__field input:focus,
+          .lead-form__field select:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.10);
+          }
+          .lead-form__phone {
+            display: flex;
+            align-items: stretch;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            background: var(--bg);
+            overflow: hidden;
+          }
+          .lead-form__phone:focus-within {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.10);
+          }
+          .lead-form__phone-prefix {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 0 10px;
+            background: var(--bg-2);
+            border-right: 1px solid var(--border);
+            font-size: 13px;
+            color: var(--fg);
+            font-weight: 500;
+            user-select: none;
+            white-space: nowrap;
+          }
+          .lead-form__flag { font-size: 16px; line-height: 1; }
+          .lead-form__phone input {
+            flex: 1;
+            border: none !important;
+            outline: none !important;
+            box-shadow: none !important;
+            padding: 8px 10px;
+            font: inherit;
+            font-size: 13.5px;
+          }
+          .lead-form__error {
+            font-size: 12px;
+            color: var(--danger);
+            background: oklch(58% 0.22 25 / .08);
+            border: 1px solid oklch(58% 0.22 25 / .25);
+            border-radius: var(--radius-sm);
+            padding: 8px 10px;
+            margin: 0;
+          }
+          .lead-form__foot {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border-2);
+            margin-top: 8px;
+          }
+
+          .lead-success {
+            padding: 48px 32px;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+          }
+          .lead-success__icon {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--success, #16a34a), oklch(50% 0.18 155));
+            color: #fff;
+            font-size: 28px;
+            font-weight: 700;
+            display: grid;
+            place-items: center;
+            box-shadow: 0 6px 20px rgba(22, 163, 74, .35);
+            animation: leadPop .4s cubic-bezier(.2,.8,.2,1);
+          }
+          .lead-success__title {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--fg);
+            margin-top: 4px;
+          }
+          .lead-success__sub {
+            font-size: 13px;
+            color: var(--fg-3);
+          }
+          .lead-success__msg {
+            font-size: 13px;
+            color: var(--fg-2);
+            margin-top: 8px;
+          }
+          @keyframes leadPop {
+            0%   { transform: scale(0.3); opacity: 0; }
+            70%  { transform: scale(1.1); opacity: 1; }
+            100% { transform: scale(1);   opacity: 1; }
+          }
+        `}</style>
       </aside>
-    </div>
-  );
-}
-
-function Field({ label, children, required }: { label: string; children: React.ReactNode; required?: boolean }) {
-  return (
-    <label style={{ display: "grid", gap: 4, fontSize: "var(--fs-sm)" }}>
-      <span style={{ color: "var(--fg-2)" }}>
-        {label} {required && <span style={{ color: "var(--danger)" }}>*</span>}
-      </span>
-      {children}
-    </label>
-  );
-}
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "8px 10px",
-  border: "1px solid var(--border)",
-  borderRadius: "var(--radius-sm)",
-  fontSize: "var(--fs-sm)",
-  fontFamily: "var(--font-sans)",
-  background: "var(--bg)",
-  color: "var(--fg)",
-};
-
-function Step1({ form, update }: { form: FormState; update: (p: Partial<FormState>) => void }) {
-  return (
-    <div style={{ display: "grid", gap: 10 }}>
-      <Field label="Nombre" required>
-        <input style={inputStyle} value={form.firstName} onChange={(e) => update({ firstName: e.target.value })} />
-      </Field>
-      <Field label="Apellido">
-        <input style={inputStyle} value={form.lastName} onChange={(e) => update({ lastName: e.target.value })} />
-      </Field>
-      <Field label="Email" required>
-        <input type="email" style={inputStyle} value={form.email} onChange={(e) => update({ email: e.target.value })} />
-      </Field>
-      <Field label="WhatsApp">
-        <input style={inputStyle} value={form.phone} onChange={(e) => update({ phone: e.target.value })} placeholder="+54 911..." />
-      </Field>
-    </div>
-  );
-}
-
-function Step2({ form, update }: { form: FormState; update: (p: Partial<FormState>) => void }) {
-  return (
-    <div style={{ display: "grid", gap: 10 }}>
-      <Field label="Empresa" required>
-        <input style={inputStyle} value={form.company} onChange={(e) => update({ company: e.target.value })} />
-      </Field>
-      <Field label="Industria">
-        <input style={inputStyle} value={form.industry} onChange={(e) => update({ industry: e.target.value })} placeholder="Tech, Retail, Finance…" />
-      </Field>
-      <Field label="Source" required>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {(["fb_ads", "linkedin", "web", "referral"] as const).map((s) => (
-            <button
-              key={s}
-              type="button"
-              className={`btn ${form.source === s ? "btn--accent" : ""}`.trim()}
-              onClick={() => update({ source: s })}
-            >
-              {s === "fb_ads" ? "FB Ads" : s === "linkedin" ? "LinkedIn" : s === "web" ? "Web" : "Referido"}
-            </button>
-          ))}
-        </div>
-      </Field>
-    </div>
-  );
-}
-
-function Step3({
-  form,
-  update,
-  owners,
-}: {
-  form: FormState;
-  update: (p: Partial<FormState>) => void;
-  owners: [string, { name: string; role: string; color: string }][];
-}) {
-  return (
-    <div style={{ display: "grid", gap: 10 }}>
-      <Field label="Valor estimado (USD)">
-        <input type="number" style={inputStyle} value={form.estimatedValue} onChange={(e) => update({ estimatedValue: e.target.value })} placeholder="0" />
-      </Field>
-      <Field label="Owner" required>
-        <div style={{ display: "grid", gap: 4 }}>
-          {owners.map(([key, o]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => update({ owner: key })}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "6px 10px",
-                border: form.owner === key ? "1px solid var(--accent)" : "1px solid var(--border)",
-                background: form.owner === key ? "var(--accent-soft)" : "var(--bg)",
-                borderRadius: "var(--radius-sm)",
-                fontSize: "var(--fs-sm)",
-                cursor: "pointer",
-                textAlign: "left",
-              }}
-            >
-              <span style={{ width: 22, height: 22, borderRadius: 11, background: o.color, color: "#fff", display: "inline-grid", placeItems: "center", fontSize: 9, fontFamily: "var(--font-mono)", fontWeight: 600 }}>
-                {key}
-              </span>
-              <span>{o.name}</span>
-              <span style={{ marginLeft: "auto", color: "var(--fg-3)", fontSize: "var(--fs-xs)" }}>{o.role}</span>
-            </button>
-          ))}
-        </div>
-      </Field>
-    </div>
-  );
-}
-
-function Step4({ form, stages }: { form: FormState; stages: { id: string; label: string }[] }) {
-  const Row = ({ k, v }: { k: string; v: React.ReactNode }) => (
-    <div className="form-row">
-      <div className="form-row__k">{k}</div>
-      <div className="form-row__v">{v}</div>
-    </div>
-  );
-  return (
-    <div>
-      <p style={{ fontSize: "var(--fs-sm)", color: "var(--fg-3)", marginBottom: 10 }}>Revisá los datos:</p>
-      <div style={{ background: "var(--bg-2)", borderRadius: "var(--radius)", padding: 12 }}>
-        <Row k="Nombre" v={`${form.firstName} ${form.lastName}`.trim()} />
-        <Row k="Email" v={<span className="mono">{form.email}</span>} />
-        <Row k="WhatsApp" v={<span className="mono">{form.phone || "—"}</span>} />
-        <Row k="Empresa" v={form.company} />
-        <Row k="Industria" v={form.industry || "—"} />
-        <Row k="Source" v={<Chip tone="accent">{form.source}</Chip>} />
-        <Row k="Valor estimado" v={<span className="mono">${form.estimatedValue || "0"}</span>} />
-        <Row k="Owner" v={form.owner} />
-        <Row k="Stage inicial" v={stages.find((s) => s.id === form.stage)?.label} />
-      </div>
-    </div>
-  );
-}
-
-function Success({
-  form,
-  onAnother,
-  onClose,
-}: {
-  form: FormState;
-  onAnother: () => void;
-  onClose: () => void;
-}) {
-  return (
-    <div style={{ textAlign: "center", padding: "30px 20px" }}>
-      <div style={{ width: 56, height: 56, borderRadius: 28, background: "var(--success-soft)", color: "var(--success)", display: "grid", placeItems: "center", margin: "0 auto 14px", fontSize: 28 }}>
-        ✓
-      </div>
-      <h2 style={{ fontSize: "var(--fs-lg)", fontWeight: 600, marginBottom: 6 }}>Lead creado</h2>
-      <p style={{ color: "var(--fg-3)", fontSize: "var(--fs-sm)", marginBottom: 20 }}>
-        {form.firstName} {form.lastName} ({form.company}) fue agregado al pipeline.
-      </p>
-      <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
-        <button type="button" className="btn" onClick={onAnother}>
-          Crear otro
-        </button>
-        <button type="button" className="btn btn--primary" onClick={onClose}>
-          Cerrar
-        </button>
-      </div>
     </div>
   );
 }

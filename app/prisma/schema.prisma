@@ -108,6 +108,7 @@ model User {
 model Company {
   id          String  @id @default(cuid())
   name        String
+  ruc         String? // 11 dígitos SUNAT — opcional pero único por workspace
   industry    String?
   website     String?
   employees   String?
@@ -119,6 +120,7 @@ model Company {
   createdAt   DateTime @default(now())
 
   @@unique([workspaceId, name])
+  @@unique([workspaceId, ruc])
   @@index([workspaceId])
 }
 

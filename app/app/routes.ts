@@ -5,6 +5,7 @@ export default [
   route("logout", "routes/logout.tsx"),
   route("api/ai", "routes/api.ai.tsx"),
   route("api/deal-update", "routes/api.deal-update.tsx"),
+  route("api/lead-create", "routes/api.lead-create.tsx"),
   route("api/stages", "routes/api.stages.tsx"),
   layout("routes/_app.tsx", [
     index("routes/dashboard.tsx"),
