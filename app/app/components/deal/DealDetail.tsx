@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
-import { useFetcher } from "react-router";
+import { useFetcher, useRevalidator } from "react-router";
 import { Icon } from "../shell/Icon";
 import { Chip } from "../ui/Chip";
 import { Tabs } from "../ui/Tabs";
 import { Card } from "../ui/Card";
-import { useActiveWorkspace, useAppStore } from "../../lib/store";
+import { useActiveWorkspace, useAppStore, useAllCompanies, useCurrentUser } from "../../lib/store";
 import { fmtMoneyFull, daysFromToday } from "../../lib/format";
 import { templates } from "../../lib/mock/rich";
 import type { ChannelKind, CompanyLite, Deal, OwnersByKey, Stage } from "../../lib/types";
@@ -153,7 +153,7 @@ function DetailPane({
 }: {
   deal: Deal;
   stage: Stage | undefined;
-  owner: { name: string; role: string; color: string } | undefined;
+  owner: { id?: string; name: string; role: string; color: string } | undefined;
   currency: ReturnType<typeof useAppStore.getState>["currency"];
   today: Date;
   stages: Stage[];
@@ -687,37 +687,161 @@ function InlineSelect({
 /* ============================================================
    DealEditModal — modal para campos avanzados
    ============================================================ */
+const SUNAT_ESTADO = ["ACTIVO", "SUSPENDIDO TEMPORAL", "BAJA DE OFICIO", "BAJA DEFINITIVA"];
+const SUNAT_CONDICION = ["HABIDO", "NO HALLADO", "NO HABIDO"];
+
 function DealEditModal({
   deal,
   stages,
   owners,
-  companies,
   onClose,
 }: {
   deal: Deal;
   stages: Stage[];
   owners: OwnersByKey;
-  companies: CompanyLite[];
+  companies: CompanyLite[]; // (ya no se usa; el modal lee todas via useAllCompanies)
   onClose: () => void;
 }) {
-  const fetcher = useFetcher<{ ok?: boolean; error?: string }>();
-  const busy = fetcher.state !== "idle";
+  const allCompanies = useAllCompanies();
+  const currentUser = useCurrentUser();
+  const revalidator = useRevalidator();
+  const isAdmin = currentUser?.permissions === "admin";
 
-  // probability se ve 0-100 al usuario pero la API espera 0-1.
-  // Usamos un state controlado + hidden input con el valor normalizado.
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // ── Estado del trato ──
+  const [name, setName] = useState(deal.name);
+  const [value, setValue] = useState(String(deal.value));
+  const [closeAt, setCloseAt] = useState(new Date(deal.estimatedCloseAt).toISOString().slice(0, 10));
+  const [stage, setStage] = useState(deal.stage);
   const [probPct, setProbPct] = useState(Math.round(deal.probability * 100));
-  // isRecurring: el checkbox HTML no se postea si está desmarcado, así que
-  // controlamos manualmente con state + hidden input que SIEMPRE se postea.
+  const [ownerId, setOwnerId] = useState(deal.ownerId ?? "");
+  const [companyId, setCompanyId] = useState(deal.companyId ?? "");
   const [isRecurring, setIsRecurring] = useState(deal.isRecurring);
+  const [arr, setArr] = useState(String(deal.arr || 0));
+  const [source, setSource] = useState(deal.source ?? "");
+  const [ai, setAi] = useState(String(deal.ai));
 
-  // Cerrar automáticamente al éxito
-  if (fetcher.data?.ok && fetcher.state === "idle") {
-    setTimeout(onClose, 80);
-  }
+  // ── Grupo (workspace) — admin puede mover ──
+  const currentCompany = allCompanies.find((c) => c.id === (deal.companyId ?? ""));
+  const initialGroup = (currentCompany?._ws ?? deal._ws ?? "novit") as "novit" | "sharky";
+  const [group, setGroup] = useState<"novit" | "sharky">(initialGroup);
 
+  // Empresas filtradas por grupo seleccionado
+  const companiesInGroup = allCompanies.filter((c) => (c._ws ?? "novit") === group);
+  // Owners del grupo seleccionado
   const ownerOptions = Object.entries(owners)
     .map(([initials, o]) => ({ id: o.id ?? "", label: o.name + " · " + initials }))
     .filter((o) => o.id);
+
+  // ── Estado de la empresa (SUNAT) — refleja la empresa seleccionada ──
+  const selectedCompany = allCompanies.find((c) => c.id === companyId);
+  const [coRuc, setCoRuc] = useState(selectedCompany?.ruc ?? "");
+  const [coRazon, setCoRazon] = useState(selectedCompany?.razonSocial ?? "");
+  const [coComercial, setCoComercial] = useState(selectedCompany?.nombreComercial ?? "");
+  const [coEstado, setCoEstado] = useState(selectedCompany?.estado ?? "");
+  const [coCondicion, setCoCondicion] = useState(selectedCompany?.condicion ?? "");
+  const [coTipo, setCoTipo] = useState(selectedCompany?.tipoContribuyente ?? "");
+  const [coIndustry, setCoIndustry] = useState(selectedCompany?.industry ?? "");
+  const [coDireccion, setCoDireccion] = useState(selectedCompany?.domicilioFiscal ?? "");
+  const [coDistrito, setCoDistrito] = useState(selectedCompany?.distrito ?? "");
+  const [coProvincia, setCoProvincia] = useState(selectedCompany?.provincia ?? "");
+  const [coDepartamento, setCoDepartamento] = useState(selectedCompany?.departamento ?? "");
+  const [coUbigeo, setCoUbigeo] = useState(selectedCompany?.ubigeo ?? "");
+  const [coRepLegal, setCoRepLegal] = useState(selectedCompany?.representanteLegal ?? "");
+  const [coRepDni, setCoRepDni] = useState(selectedCompany?.representanteDni ?? "");
+  const [coRepCargo, setCoRepCargo] = useState(selectedCompany?.representanteCargo ?? "");
+  const [coTelefono, setCoTelefono] = useState(selectedCompany?.telefono ?? "");
+  const [coEmail, setCoEmail] = useState(selectedCompany?.email ?? "");
+
+  // Al cambiar de empresa seleccionada, recargar los campos SUNAT de esa empresa
+  const onCompanyChange = (id: string) => {
+    setCompanyId(id);
+    const c = allCompanies.find((x) => x.id === id);
+    setCoRuc(c?.ruc ?? "");
+    setCoRazon(c?.razonSocial ?? "");
+    setCoComercial(c?.nombreComercial ?? "");
+    setCoEstado(c?.estado ?? "");
+    setCoCondicion(c?.condicion ?? "");
+    setCoTipo(c?.tipoContribuyente ?? "");
+    setCoIndustry(c?.industry ?? "");
+    setCoDireccion(c?.domicilioFiscal ?? "");
+    setCoDistrito(c?.distrito ?? "");
+    setCoProvincia(c?.provincia ?? "");
+    setCoDepartamento(c?.departamento ?? "");
+    setCoUbigeo(c?.ubigeo ?? "");
+    setCoRepLegal(c?.representanteLegal ?? "");
+    setCoRepDni(c?.representanteDni ?? "");
+    setCoRepCargo(c?.representanteCargo ?? "");
+    setCoTelefono(c?.telefono ?? "");
+    setCoEmail(c?.email ?? "");
+  };
+
+  // Al cambiar de grupo, resetear empresa al primero del grupo destino
+  const onGroupChange = (g: "novit" | "sharky") => {
+    setGroup(g);
+    const first = allCompanies.find((c) => (c._ws ?? "novit") === g);
+    if (first && first.id !== companyId) onCompanyChange(first.id);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      // 1) Actualizar la empresa (SUNAT) si hay una seleccionada
+      if (companyId) {
+        const cf = new FormData();
+        cf.set("companyId", companyId);
+        cf.set("ruc", coRuc);
+        cf.set("razonSocial", coRazon);
+        cf.set("nombreComercial", coComercial);
+        cf.set("estado", coEstado);
+        cf.set("condicion", coCondicion);
+        cf.set("tipoContribuyente", coTipo);
+        cf.set("industry", coIndustry);
+        cf.set("domicilioFiscal", coDireccion);
+        cf.set("distrito", coDistrito);
+        cf.set("provincia", coProvincia);
+        cf.set("departamento", coDepartamento);
+        cf.set("ubigeo", coUbigeo);
+        cf.set("representanteLegal", coRepLegal);
+        cf.set("representanteDni", coRepDni);
+        cf.set("representanteCargo", coRepCargo);
+        cf.set("telefono", coTelefono);
+        cf.set("email", coEmail);
+        const r1 = await fetch("/api/company-update", { method: "POST", body: cf });
+        const j1 = await r1.json();
+        if (!j1.ok) throw new Error(j1.error || "Error al guardar la empresa");
+      }
+
+      // 2) Actualizar el trato (+ mover de grupo si cambió)
+      const df = new FormData();
+      df.set("id", deal.id);
+      df.set("name", name);
+      df.set("value", value);
+      df.set("estimatedCloseAt", closeAt);
+      df.set("stage", stage);
+      df.set("probability", (probPct / 100).toFixed(2));
+      df.set("ai", ai);
+      df.set("source", source);
+      df.set("isRecurring", isRecurring ? "true" : "false");
+      df.set("arr", arr);
+      if (companyId) df.set("companyId", companyId);
+      if (ownerId) df.set("ownerId", ownerId);
+      if (group !== initialGroup) df.set("moveToWorkspace", group);
+      const r2 = await fetch("/api/deal-update", { method: "POST", body: df });
+      const j2 = await r2.json();
+      if (!j2.ok) throw new Error(j2.error || "Error al guardar el trato");
+
+      // 3) Refrescar loaders + cerrar
+      revalidator.revalidate();
+      setTimeout(onClose, 120);
+    } catch (e) {
+      setError((e as Error).message);
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="drawer-backdrop" onClick={onClose}>
@@ -732,55 +856,37 @@ function DealEditModal({
           </button>
         </header>
 
-        <fetcher.Form method="POST" action="/api/deal-update" className="deal-edit-modal__body">
-          <input type="hidden" name="id" value={deal.id} />
-
+        <div className="deal-edit-modal__body">
+          {/* ─── Datos comerciales ─── */}
           <div className="deal-edit-modal__section">
             <h3>Datos comerciales</h3>
             <div className="deal-edit-modal__row">
               <label className="deal-edit-modal__field" style={{ flex: 2 }}>
-                <span>Nombre</span>
-                <input type="text" name="name" defaultValue={deal.name} required />
+                <span>Nombre del trato</span>
+                <input type="text" value={name} onChange={(e) => setName(e.target.value)} required />
               </label>
               <label className="deal-edit-modal__field" style={{ flex: 1 }}>
-                <span>Código público</span>
-                <input
-                  type="text"
-                  name="publicId"
-                  defaultValue={deal.id}
-                  className="mono"
-                  pattern="[A-Z0-9-]+"
-                  title="Solo mayúsculas, números y guiones"
-                />
+                <span>Código (interno)</span>
+                {/* publicId es interno y NO editable */}
+                <input type="text" value={deal.id} readOnly disabled className="mono deal-edit-modal__readonly" />
               </label>
             </div>
 
             <div className="deal-edit-modal__row">
               <label className="deal-edit-modal__field" style={{ flex: 1 }}>
                 <span>Valor (setup)</span>
-                <input
-                  type="number"
-                  name="value"
-                  defaultValue={deal.value}
-                  min={0}
-                  step="0.01"
-                  className="mono"
-                />
+                <input type="number" value={value} onChange={(e) => setValue(e.target.value)} min={0} step="0.01" className="mono" />
               </label>
               <label className="deal-edit-modal__field" style={{ flex: 1 }}>
                 <span>Cierre estimado</span>
-                <input
-                  type="date"
-                  name="estimatedCloseAt"
-                  defaultValue={new Date(deal.estimatedCloseAt).toISOString().slice(0, 10)}
-                />
+                <input type="date" value={closeAt} onChange={(e) => setCloseAt(e.target.value)} />
               </label>
             </div>
 
             <div className="deal-edit-modal__row">
               <label className="deal-edit-modal__field" style={{ flex: 1 }}>
                 <span>Stage</span>
-                <select name="stage" defaultValue={deal.stage}>
+                <select value={stage} onChange={(e) => setStage(e.target.value)}>
                   {stages.map((s) => (
                     <option key={s.id} value={s.id}>{s.label}</option>
                   ))}
@@ -796,69 +902,164 @@ function DealEditModal({
                   max={100}
                   className="mono"
                 />
-                {/* hidden con el valor 0-1 que la API espera */}
-                <input type="hidden" name="probability" value={(probPct / 100).toFixed(2)} />
-                <small>El default viene del stage; podés sobreescribir.</small>
               </label>
             </div>
           </div>
 
+          {/* ─── Asignación: Grupo + Owner + Empresa ─── */}
           <div className="deal-edit-modal__section">
             <h3>Asignación</h3>
             <div className="deal-edit-modal__row">
               <label className="deal-edit-modal__field" style={{ flex: 1 }}>
+                <span>Grupo {isAdmin ? <small>(podés mover)</small> : <small>(solo admin mueve)</small>}</span>
+                <select
+                  value={group}
+                  onChange={(e) => onGroupChange(e.target.value as "novit" | "sharky")}
+                  disabled={!isAdmin}
+                >
+                  <option value="novit">NOVIT</option>
+                  <option value="sharky">SHARKY</option>
+                </select>
+              </label>
+              <label className="deal-edit-modal__field" style={{ flex: 1 }}>
                 <span>Owner</span>
-                <select name="ownerId" defaultValue={deal.ownerId ?? ""}>
+                <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>
+                  <option value="">—</option>
                   {ownerOptions.map((o) => (
                     <option key={o.id} value={o.id}>{o.label}</option>
                   ))}
                 </select>
               </label>
+            </div>
+            <label className="deal-edit-modal__field">
+              <span>Empresa <small>({companiesInGroup.length} en {group.toUpperCase()})</small></span>
+              <select value={companyId} onChange={(e) => onCompanyChange(e.target.value)}>
+                {companiesInGroup.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}{c.ruc ? ` · ${c.ruc}` : ""}</option>
+                ))}
+              </select>
+            </label>
+            {group !== initialGroup && (
+              <div className="deal-edit-modal__hint-move">
+                ⚠ Al guardar, el trato y la empresa <b>{selectedCompany?.name}</b> se moverán al grupo <b>{group.toUpperCase()}</b>.
+              </div>
+            )}
+          </div>
+
+          {/* ─── Empresa (SUNAT) — editable ─── */}
+          <div className="deal-edit-modal__section">
+            <h3>Empresa · datos SUNAT</h3>
+            <div className="deal-edit-modal__row">
+              <label className="deal-edit-modal__field" style={{ flex: 1 }}>
+                <span>RUC</span>
+                <input type="text" value={coRuc} onChange={(e) => setCoRuc(e.target.value.replace(/\D/g, "").slice(0, 11))} maxLength={11} className="mono" placeholder="11 dígitos" />
+              </label>
               <label className="deal-edit-modal__field" style={{ flex: 2 }}>
-                <span>Empresa</span>
-                <select name="companyId" defaultValue={deal.companyId ?? ""}>
-                  {companies.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
+                <span>Razón social</span>
+                <input type="text" value={coRazon} onChange={(e) => setCoRazon(e.target.value)} />
+              </label>
+            </div>
+            <div className="deal-edit-modal__row">
+              <label className="deal-edit-modal__field" style={{ flex: 1 }}>
+                <span>Nombre comercial</span>
+                <input type="text" value={coComercial} onChange={(e) => setCoComercial(e.target.value)} />
+              </label>
+              <label className="deal-edit-modal__field" style={{ flex: 1 }}>
+                <span>Industria / Sector</span>
+                <input type="text" value={coIndustry} onChange={(e) => setCoIndustry(e.target.value)} placeholder="Seguros, Banca…" />
+              </label>
+            </div>
+            <div className="deal-edit-modal__row">
+              <label className="deal-edit-modal__field" style={{ flex: 1 }}>
+                <span>Estado</span>
+                <select value={coEstado} onChange={(e) => setCoEstado(e.target.value)}>
+                  <option value="">—</option>
+                  {SUNAT_ESTADO.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
+              </label>
+              <label className="deal-edit-modal__field" style={{ flex: 1 }}>
+                <span>Condición</span>
+                <select value={coCondicion} onChange={(e) => setCoCondicion(e.target.value)}>
+                  <option value="">—</option>
+                  {SUNAT_CONDICION.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </label>
+              <label className="deal-edit-modal__field" style={{ flex: 1 }}>
+                <span>Tipo contribuyente</span>
+                <input type="text" value={coTipo} onChange={(e) => setCoTipo(e.target.value)} placeholder="S.A.C., E.I.R.L…" />
+              </label>
+            </div>
+            <label className="deal-edit-modal__field">
+              <span>Domicilio fiscal</span>
+              <input type="text" value={coDireccion} onChange={(e) => setCoDireccion(e.target.value)} />
+            </label>
+            <div className="deal-edit-modal__row">
+              <label className="deal-edit-modal__field" style={{ flex: 1 }}>
+                <span>Distrito</span>
+                <input type="text" value={coDistrito} onChange={(e) => setCoDistrito(e.target.value)} />
+              </label>
+              <label className="deal-edit-modal__field" style={{ flex: 1 }}>
+                <span>Provincia</span>
+                <input type="text" value={coProvincia} onChange={(e) => setCoProvincia(e.target.value)} />
+              </label>
+              <label className="deal-edit-modal__field" style={{ flex: 1 }}>
+                <span>Departamento</span>
+                <input type="text" value={coDepartamento} onChange={(e) => setCoDepartamento(e.target.value)} />
+              </label>
+              <label className="deal-edit-modal__field" style={{ flex: 1 }}>
+                <span>Ubigeo</span>
+                <input type="text" value={coUbigeo} onChange={(e) => setCoUbigeo(e.target.value.replace(/\D/g, "").slice(0, 6))} maxLength={6} className="mono" />
+              </label>
+            </div>
+            <div className="deal-edit-modal__row">
+              <label className="deal-edit-modal__field" style={{ flex: 2 }}>
+                <span>Representante legal</span>
+                <input type="text" value={coRepLegal} onChange={(e) => setCoRepLegal(e.target.value)} />
+              </label>
+              <label className="deal-edit-modal__field" style={{ flex: 1 }}>
+                <span>DNI</span>
+                <input type="text" value={coRepDni} onChange={(e) => setCoRepDni(e.target.value.replace(/\D/g, "").slice(0, 8))} maxLength={8} className="mono" />
+              </label>
+              <label className="deal-edit-modal__field" style={{ flex: 1 }}>
+                <span>Cargo</span>
+                <input type="text" value={coRepCargo} onChange={(e) => setCoRepCargo(e.target.value)} />
+              </label>
+            </div>
+            <div className="deal-edit-modal__row">
+              <label className="deal-edit-modal__field" style={{ flex: 1 }}>
+                <span>Teléfono</span>
+                <input type="text" value={coTelefono} onChange={(e) => setCoTelefono(e.target.value)} className="mono" />
+              </label>
+              <label className="deal-edit-modal__field" style={{ flex: 1 }}>
+                <span>Email</span>
+                <input type="email" value={coEmail} onChange={(e) => setCoEmail(e.target.value)} />
               </label>
             </div>
           </div>
 
+          {/* ─── SaaS / recurrencia ─── */}
           <div className="deal-edit-modal__section">
             <h3>SaaS / recurrencia</h3>
             <div className="deal-edit-modal__row">
               <label className="deal-edit-modal__field deal-edit-modal__field--check" style={{ flex: 0 }}>
-                <input
-                  type="checkbox"
-                  checked={isRecurring}
-                  onChange={(e) => setIsRecurring(e.target.checked)}
-                />
+                <input type="checkbox" checked={isRecurring} onChange={(e) => setIsRecurring(e.target.checked)} />
                 <span>Contrato recurrente</span>
               </label>
-              {/* hidden siempre se envía (HTML no postea checkboxes desmarcados) */}
-              <input type="hidden" name="isRecurring" value={isRecurring ? "true" : "false"} />
               <label className="deal-edit-modal__field" style={{ flex: 1 }}>
                 <span>ARR (anual)</span>
-                <input
-                  type="number"
-                  name="arr"
-                  defaultValue={deal.arr || 0}
-                  min={0}
-                  step="0.01"
-                  className="mono"
-                />
+                <input type="number" value={arr} onChange={(e) => setArr(e.target.value)} min={0} step="0.01" className="mono" />
                 <small>MRR se calcula como ARR / 12 al guardar.</small>
               </label>
             </div>
           </div>
 
+          {/* ─── Avanzado ─── */}
           <div className="deal-edit-modal__section">
             <h3>Avanzado</h3>
             <div className="deal-edit-modal__row">
               <label className="deal-edit-modal__field" style={{ flex: 1 }}>
                 <span>Source / canal de origen</span>
-                <select name="source" defaultValue={deal.source ?? ""}>
+                <select value={source} onChange={(e) => setSource(e.target.value)}>
                   <option value="">— (sin definir)</option>
                   <option value="fb_ads">Facebook Ads</option>
                   <option value="linkedin">LinkedIn</option>
@@ -871,31 +1072,22 @@ function DealEditModal({
               </label>
               <label className="deal-edit-modal__field" style={{ flex: 1 }}>
                 <span>AI Score <small>(override 0-100)</small></span>
-                <input
-                  type="number"
-                  name="ai"
-                  defaultValue={deal.ai}
-                  min={0}
-                  max={100}
-                  className="mono"
-                />
+                <input type="number" value={ai} onChange={(e) => setAi(e.target.value)} min={0} max={100} className="mono" />
               </label>
             </div>
           </div>
 
-          {fetcher.data?.error && (
-            <div className="deal-edit-modal__error">{fetcher.data.error}</div>
-          )}
+          {error && <div className="deal-edit-modal__error">{error}</div>}
 
           <footer className="deal-edit-modal__foot">
-            <button type="button" className="btn" onClick={onClose} disabled={busy}>
+            <button type="button" className="btn" onClick={onClose} disabled={saving}>
               Cancelar
             </button>
-            <button type="submit" className="btn btn--primary" disabled={busy}>
-              {busy ? "Guardando…" : "Guardar cambios"}
+            <button type="button" className="btn btn--primary" onClick={handleSave} disabled={saving}>
+              {saving ? "Guardando…" : "Guardar cambios"}
             </button>
           </footer>
-        </fetcher.Form>
+        </div>
       </div>
     </div>
   );

@@ -40,6 +40,27 @@ export type CompanyLite = {
   id: string;
   name: string;
   industry?: string | null;
+  _ws?: WorkspaceId; // grupo al que pertenece (para el dropdown/selector)
+  // ───── SUNAT (editables desde el modal del trato) ─────
+  ruc?: string | null;
+  razonSocial?: string | null;
+  nombreComercial?: string | null;
+  estado?: string | null;
+  condicion?: string | null;
+  tipoContribuyente?: string | null;
+  website?: string | null;
+  employees?: string | null;
+  tier?: string | null;
+  domicilioFiscal?: string | null;
+  distrito?: string | null;
+  provincia?: string | null;
+  departamento?: string | null;
+  ubigeo?: string | null;
+  representanteLegal?: string | null;
+  representanteDni?: string | null;
+  representanteCargo?: string | null;
+  telefono?: string | null;
+  email?: string | null;
 };
 
 export type Deal = {

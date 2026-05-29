@@ -7,6 +7,7 @@ export default [
   route("api/deal-update", "routes/api.deal-update.tsx"),
   route("api/lead-create", "routes/api.lead-create.tsx"),
   route("api/deal-delete", "routes/api.deal-delete.tsx"),
+  route("api/company-update", "routes/api.company-update.tsx"),
   route("api/stages", "routes/api.stages.tsx"),
   layout("routes/_app.tsx", [
     index("routes/dashboard.tsx"),

@@ -113,6 +113,24 @@ model Company {
   website     String?
   employees   String?
   tier        String?
+
+  // ───── SUNAT — datos tributarios del cliente ─────
+  razonSocial            String?
+  nombreComercial        String?
+  estado                 String?  // ACTIVO | SUSPENDIDO TEMPORAL | BAJA DE OFICIO | BAJA DEFINITIVA
+  condicion              String?  // HABIDO | NO HALLADO | NO HABIDO
+  tipoContribuyente      String?
+  domicilioFiscal        String?
+  distrito               String?
+  provincia              String?
+  departamento           String?
+  ubigeo                 String?  // 6 dígitos INEI
+  representanteLegal     String?
+  representanteDni       String?
+  representanteCargo     String?
+  telefono               String?
+  email                  String?
+
   workspaceId String
   workspace   Workspace @relation(fields: [workspaceId], references: [id])
   deals       Deal[]

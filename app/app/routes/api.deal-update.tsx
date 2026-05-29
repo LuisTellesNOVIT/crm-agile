@@ -1,6 +1,7 @@
 import type { ActionFunctionArgs } from "react-router";
 import { prisma } from "../lib/db.server";
 import { stageProbability } from "../lib/stages";
+import { requireUser } from "../lib/session.server";
 
 /**
  * Resource route — POST /api/deal-update
@@ -32,6 +33,7 @@ import { stageProbability } from "../lib/stages";
  * así que la UI se refresca sin manualWork.
  */
 export async function action({ request }: ActionFunctionArgs) {
+  const me = await requireUser(request);
   const form = await request.formData();
   const publicId = String(form.get("id") ?? "");
   if (!publicId) {
@@ -40,7 +42,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
   const existing = await prisma.deal.findUnique({
     where: { publicId },
-    select: { id: true, workspaceId: true, isRecurring: true, mrr: true, stage: true },
+    select: { id: true, workspaceId: true, companyId: true, ownerId: true, isRecurring: true, mrr: true, stage: true },
   });
   if (!existing) {
     return Response.json({ error: `deal not found: ${publicId}` }, { status: 404 });
@@ -49,13 +51,68 @@ export async function action({ request }: ActionFunctionArgs) {
   const data: Record<string, unknown> = {};
   const errors: string[] = [];
 
+  // ─── moveToWorkspace (cambio de grupo NOVIT/SHARKY — solo admin) ─
+  // Mueve el deal Y su empresa al workspace destino. Remapea stage (por key
+  // si existe en destino, sino primer stage) y owner (si el actual no
+  // pertenece al destino, queda el admin que ejecuta).
+  let targetWsId = existing.workspaceId;
+  const moveSlug = form.get("moveToWorkspace");
+  if (moveSlug != null && String(moveSlug).trim()) {
+    if (me.permissions !== "admin") {
+      errors.push("Solo administradores pueden mover de grupo");
+    } else {
+      const targetWs = await prisma.workspace.findUnique({
+        where: { slug: String(moveSlug).trim().toLowerCase() },
+        select: { id: true },
+      });
+      if (!targetWs) {
+        errors.push(`Grupo destino no encontrado: ${moveSlug}`);
+      } else if (targetWs.id !== existing.workspaceId) {
+        targetWsId = targetWs.id;
+        data.workspaceId = targetWs.id;
+        // mover la empresa al grupo destino (capturamos conflicto de unicidad)
+        try {
+          await prisma.company.update({
+            where: { id: existing.companyId },
+            data: { workspaceId: targetWs.id },
+          });
+        } catch (e) {
+          const msg = (e as Error).message ?? "";
+          if (msg.includes("Unique constraint")) {
+            return Response.json(
+              { error: "El grupo destino ya tiene una empresa con ese nombre o RUC. Renombrá primero." },
+              { status: 409 },
+            );
+          }
+          throw e;
+        }
+        // remapear owner si el actual no pertenece al destino
+        const ownerOk = await prisma.user.findFirst({
+          where: { id: existing.ownerId, workspaceId: targetWs.id },
+          select: { id: true },
+        });
+        if (!ownerOk) {
+          const meInTarget = me.workspaceId === targetWs.id;
+          if (meInTarget) data.ownerId = me.id;
+          else {
+            const firstUser = await prisma.user.findFirst({
+              where: { workspaceId: targetWs.id },
+              select: { id: true },
+            });
+            if (firstUser) data.ownerId = firstUser.id;
+          }
+        }
+      }
+    }
+  }
+
   // ─── stage (con recálculo de probability + closedAt) ────────
   const stageKey = form.get("stage");
   let stageRow: { key: string; probability: number | null; isWon: boolean; isLost: boolean } | null = null;
   if (stageKey != null && String(stageKey).trim()) {
     const key = String(stageKey).trim();
     stageRow = await prisma.pipelineStage.findUnique({
-      where: { workspaceId_key: { workspaceId: existing.workspaceId, key } },
+      where: { workspaceId_key: { workspaceId: targetWsId, key } },
       select: { key: true, probability: true, isWon: true, isLost: true },
     });
     if (!stageRow) {
@@ -66,6 +123,25 @@ export async function action({ request }: ActionFunctionArgs) {
       data.probability = stageRow.probability ?? stageProbability(stageRow.key);
       // closedAt: marca/desmarca según won/lost del nuevo stage
       data.closedAt = stageRow.isWon || stageRow.isLost ? new Date() : null;
+    }
+  }
+
+  // Si movimos de grupo y el stage actual no existe en el destino, mapear al primero
+  if (data.workspaceId && !data.stage) {
+    const stillValid = await prisma.pipelineStage.findUnique({
+      where: { workspaceId_key: { workspaceId: targetWsId, key: existing.stage } },
+      select: { key: true, probability: true },
+    });
+    if (!stillValid) {
+      const first = await prisma.pipelineStage.findFirst({
+        where: { workspaceId: targetWsId, isWon: false, isLost: false },
+        orderBy: { position: "asc" },
+        select: { key: true, probability: true },
+      });
+      if (first) {
+        data.stage = first.key;
+        data.probability = first.probability ?? stageProbability(first.key);
+      }
     }
   }
 
@@ -127,7 +203,7 @@ export async function action({ request }: ActionFunctionArgs) {
     else data.ai = n;
   }
 
-  // ─── ownerId (validar que pertenece al workspace) ──────
+  // ─── ownerId (validar que pertenece al workspace destino) ──────
   const ownerId = form.get("ownerId");
   if (ownerId != null && String(ownerId).trim()) {
     const id = String(ownerId);
@@ -135,14 +211,14 @@ export async function action({ request }: ActionFunctionArgs) {
       where: { id },
       select: { workspaceId: true },
     });
-    if (!u || u.workspaceId !== existing.workspaceId) {
-      errors.push("ownerId no pertenece al workspace del deal");
+    if (!u || u.workspaceId !== targetWsId) {
+      errors.push("ownerId no pertenece al grupo del deal");
     } else {
       data.ownerId = id;
     }
   }
 
-  // ─── companyId (validar que pertenece al workspace) ────
+  // ─── companyId (validar que pertenece al workspace destino) ────
   const companyId = form.get("companyId");
   if (companyId != null && String(companyId).trim()) {
     const id = String(companyId);
@@ -150,8 +226,8 @@ export async function action({ request }: ActionFunctionArgs) {
       where: { id },
       select: { workspaceId: true },
     });
-    if (!c || c.workspaceId !== existing.workspaceId) {
-      errors.push("companyId no pertenece al workspace del deal");
+    if (!c || c.workspaceId !== targetWsId) {
+      errors.push("companyId no pertenece al grupo del deal");
     } else {
       data.companyId = id;
     }

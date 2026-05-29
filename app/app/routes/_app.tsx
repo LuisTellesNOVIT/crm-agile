@@ -19,8 +19,8 @@ import { ownersByInitials, toClientDeal } from "../lib/serialize";
 import { requireUser } from "../lib/session.server";
 
 const EMPTY_DEALS: WorkspaceLoaderData = {
-  novit: { deals: [], owners: {}, stages: [] },
-  sharky: { deals: [], owners: {}, stages: [] },
+  novit: { deals: [], owners: {}, companies: [], stages: [] },
+  sharky: { deals: [], owners: {}, companies: [], stages: [] },
 };
 
 export type AppLoaderData = WorkspaceLoaderData & {
@@ -92,20 +92,45 @@ export async function loader({ request }: { request: Request }): Promise<AppLoad
         isLost: s.isLost,
       }));
 
-    const mapCompanies = (rows: Array<{ id: string; name: string; industry: string | null }>) =>
-      rows.map((c) => ({ id: c.id, name: c.name, industry: c.industry ?? null }));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mapCompanies = (rows: any[], wsSlug: "novit" | "sharky") =>
+      rows.map((c) => ({
+        id: c.id,
+        name: c.name,
+        industry: c.industry ?? null,
+        _ws: wsSlug,
+        ruc: c.ruc ?? null,
+        razonSocial: c.razonSocial ?? null,
+        nombreComercial: c.nombreComercial ?? null,
+        estado: c.estado ?? null,
+        condicion: c.condicion ?? null,
+        tipoContribuyente: c.tipoContribuyente ?? null,
+        website: c.website ?? null,
+        employees: c.employees ?? null,
+        tier: c.tier ?? null,
+        domicilioFiscal: c.domicilioFiscal ?? null,
+        distrito: c.distrito ?? null,
+        provincia: c.provincia ?? null,
+        departamento: c.departamento ?? null,
+        ubigeo: c.ubigeo ?? null,
+        representanteLegal: c.representanteLegal ?? null,
+        representanteDni: c.representanteDni ?? null,
+        representanteCargo: c.representanteCargo ?? null,
+        telefono: c.telefono ?? null,
+        email: c.email ?? null,
+      }));
 
     return {
       novit: {
         deals: (novitWs?.deals ?? []).map(toClientDeal),
         owners: ownersByInitials(novitWs?.users ?? []),
-        companies: mapCompanies(novitWs?.companies ?? []),
+        companies: mapCompanies(novitWs?.companies ?? [], "novit"),
         stages: mapStages(novitWs?.pipelineStages ?? []),
       },
       sharky: {
         deals: (sharkyWs?.deals ?? []).map(toClientDeal),
         owners: ownersByInitials(sharkyWs?.users ?? []),
-        companies: mapCompanies(sharkyWs?.companies ?? []),
+        companies: mapCompanies(sharkyWs?.companies ?? [], "sharky"),
         stages: mapStages(sharkyWs?.pipelineStages ?? []),
       },
       currentUser: {

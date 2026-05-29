@@ -181,6 +181,19 @@ export function useCurrentUser(): CurrentUserData | null {
 }
 
 /**
+ * Todas las empresas de AMBOS grupos (NOVIT + SHARKY), sin importar el
+ * workspace activo. Usado por el modal de edición del trato para el
+ * dropdown de empresa + selector de grupo (admins pueden mover).
+ */
+export function useAllCompanies(): import("./types").CompanyLite[] {
+  const data = useWorkspaceLoaderData();
+  return useMemo(
+    () => [...data.novit.companies, ...data.sharky.companies],
+    [data],
+  );
+}
+
+/**
  * Workspace activo, con filtros aplicados.
  * Reemplazó al hook que leía dealsByWs de Zustand — ahora la fuente es el loader.
  */
