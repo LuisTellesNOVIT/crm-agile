@@ -4157,6 +4157,23 @@ a.nav-item.is-active { color: var(--fg); }
   border-bottom: 1px solid var(--border);
 }
 .deal-detail__title { flex: 1; min-width: 0; }
+.deal-detail__delete {
+  border-color: #fecaca !important;
+  color: #b91c1c !important;
+}
+.deal-detail__delete:hover:not(:disabled) {
+  background: #fef2f2 !important;
+  border-color: #f87171 !important;
+}
+.deal-detail__delete-error {
+  margin: 10px 20px 0;
+  padding: 10px 12px;
+  background: oklch(58% 0.22 25 / .08);
+  border: 1px solid oklch(58% 0.22 25 / .25);
+  border-radius: var(--radius-sm);
+  color: var(--danger);
+  font-size: 12.5px;
+}
 .deal-detail__body {
   flex: 1;
   overflow: auto;

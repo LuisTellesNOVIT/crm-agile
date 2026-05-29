@@ -21,8 +21,30 @@ export function DealDetail({ dealId, onClose }: { dealId: string; onClose: () =>
   const openAI = useAppStore((s) => s.openAI);
   const [tab, setTab] = useState("detail");
   const [editModalOpen, setEditModalOpen] = useState(false);
+  const deleteFetcher = useFetcher<{ ok?: boolean; error?: string }>();
+  const deleting = deleteFetcher.state !== "idle";
 
   const deal = ws.deals.find((d) => d.id === dealId);
+
+  // Al confirmarse el delete, cerramos el detalle (vuelve al Pipeline).
+  const deleteData = deleteFetcher.data;
+  if (deleteData?.ok && deleteFetcher.state === "idle") {
+    // El loader ya revalidó y el deal desapareció; cerramos el overlay.
+    setTimeout(onClose, 50);
+  }
+
+  const handleDelete = () => {
+    if (!deal) return;
+    const ok = window.confirm(
+      `¿Eliminar el trato "${deal.name}" (${deal.id})?\n\nEsta acción NO se puede deshacer. Se borran también sus actividades, archivos y conversaciones. La empresa y los contactos se mantienen.`,
+    );
+    if (!ok) return;
+    deleteFetcher.submit(
+      { id: deal.id },
+      { method: "POST", action: "/api/deal-delete" },
+    );
+  };
+
   if (!deal) {
     return (
       <div className="deal-detail">
@@ -69,8 +91,23 @@ export function DealDetail({ dealId, onClose }: { dealId: string; onClose: () =>
           <button type="button" className="btn btn--primary" onClick={() => setEditModalOpen(true)}>
             <Icon name="settings" size={13} /> Editar
           </button>
+          <button
+            type="button"
+            className="btn deal-detail__delete"
+            onClick={handleDelete}
+            disabled={deleting}
+            title="Eliminar trato"
+          >
+            <Icon name="x" size={13} /> {deleting ? "Eliminando…" : "Eliminar"}
+          </button>
         </div>
       </header>
+
+      {deleteData?.error && (
+        <div className="deal-detail__delete-error" role="alert">
+          ⚠ {deleteData.error}
+        </div>
+      )}
 
       <Tabs items={TABS} active={tab} onChange={setTab} />
 
