@@ -16,8 +16,11 @@ type PrismaDeal = {
   probability: number;
   ai: number;
   source?: string | null;
+  tags?: string[] | null;
   createdAt: Date | string;
   estimatedCloseAt: Date | string;
+  projectStartAt?: Date | string | null;
+  projectEndAt?: Date | string | null;
   lastActivityAt: Date | string;
   company: { id: string; name: string };
   owner: { id: string; initials: string };
@@ -49,11 +52,14 @@ export function toClientDeal(d: PrismaDeal): Deal {
     probability: d.probability,
     createdAt: new Date(d.createdAt).toISOString(),
     estimatedCloseAt: new Date(d.estimatedCloseAt).toISOString(),
+    projectStartAt: d.projectStartAt ? new Date(d.projectStartAt).toISOString() : null,
+    projectEndAt: d.projectEndAt ? new Date(d.projectEndAt).toISOString() : null,
     lastActivity: Math.min(ageDays, 90),
     contacts: 0,
     isRecurring: d.isRecurring,
     arr: d.mrr ? d.mrr * 12 : 0,
     source: d.source ?? null,
+    tags: d.tags ?? [],
   };
 }
 

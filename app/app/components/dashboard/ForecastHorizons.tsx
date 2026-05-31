@@ -80,6 +80,34 @@ export function ForecastHorizons({
   );
   const maxBar = Math.max(1, ...buckets.map((b) => b.total));
 
+  // SaaS POST-PROYECTO: el recurrente arranca el mes siguiente al fin del proyecto.
+  // - ARR activo: ARR anualizado de los proyectos que terminan dentro del horizonte.
+  // - SaaS facturado: MRR × meses facturados (desde fin de proyecto+1 hasta el fin del horizonte).
+  const { saasArrRunRate, saasAccrued } = useMemo(() => {
+    const startMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    const monthIdxOf = (d: Date) =>
+      (d.getFullYear() - startMonth.getFullYear()) * 12 + (d.getMonth() - startMonth.getMonth());
+    const projEnd = (d: Deal) => {
+      if (d.projectEndAt) return new Date(d.projectEndAt);
+      const s = d.projectStartAt ? new Date(d.projectStartAt) : new Date(d.estimatedCloseAt);
+      const e = new Date(s);
+      e.setMonth(e.getMonth() + 2);
+      return e;
+    };
+    let runRate = 0; // ARR anual activo (proyectos terminados en el horizonte)
+    let accrued = 0; // SaaS facturado acumulado post-proyecto
+    open.forEach((d) => {
+      if (!d.isRecurring || !d.arr) return;
+      const endIdx = monthIdxOf(projEnd(d));
+      if (endIdx < horizon) {
+        runRate += d.arr * d.probability;
+        const monthly = (d.arr / 12) * d.probability;
+        accrued += monthly * Math.max(0, horizon - 1 - endIdx); // meses facturando
+      }
+    });
+    return { saasArrRunRate: runRate, saasAccrued: accrued };
+  }, [open, today, horizon]);
+
   return (
     <Card>
       <Card.Header label="Forecast por horizonte" sub="Pipeline ponderado por probabilidad IA + ARR recurrente">
@@ -190,7 +218,7 @@ export function ForecastHorizons({
             })}
           </div>
         ) : (
-          <TimelineChart open={open} today={today} horizon={horizon} buckets={buckets} currency={currency} onOpenDeal={onOpenDeal} />
+          <TimelineChart open={open} today={today} horizon={horizon} currency={currency} onOpenDeal={onOpenDeal} view="band" />
         )}
 
         <div className="fc-summary">
@@ -211,6 +239,14 @@ export function ForecastHorizons({
               </span>
             </b>
           </div>
+          <div className="fc-summary__saas">
+            <small>SaaS ARR activo · anual</small>
+            <b style={{ color: "var(--info)" }}>{fmtMoney(saasArrRunRate, currency)}</b>
+          </div>
+          <div className="fc-summary__saas">
+            <small>SaaS facturado · {horizon}m</small>
+            <b style={{ color: "var(--info)" }}>{fmtMoney(saasAccrued, currency)}</b>
+          </div>
         </div>
       </Card.Body>
     </Card>
@@ -221,18 +257,22 @@ function TimelineChart({
   open,
   today,
   horizon,
-  buckets,
   currency,
   onOpenDeal,
+  view = "band",
 }: {
   open: Deal[];
   today: Date;
   horizon: Horizon;
-  buckets: { month: Date; total: number }[];
   currency: Currency;
   onOpenDeal: (id: string) => void;
+  view?: "band" | "gantt";
 }) {
   const startMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  const months = Array.from(
+    { length: horizon },
+    (_, i) => new Date(startMonth.getFullYear(), startMonth.getMonth() + i, 1),
+  );
   const endMonth = new Date(today.getFullYear(), today.getMonth() + horizon, 1);
   const totalMs = endMonth.getTime() - startMonth.getTime();
   const dayToPct = (d: Date | string) => {
@@ -240,66 +280,90 @@ function TimelineChart({
     return ((date.getTime() - startMonth.getTime()) / totalMs) * 100;
   };
 
-  const visible = useMemo(() => {
-    return open
-      .filter((d) => {
-        const close = new Date(d.estimatedCloseAt);
-        return close >= today && close < endMonth;
-      })
-      .sort(
-        (a, b) =>
-          new Date(a.estimatedCloseAt).getTime() -
-          new Date(b.estimatedCloseAt).getTime(),
-      )
-      .slice(0, 14);
-  }, [open, today, endMonth]);
-  const hidden = Math.max(
-    0,
-    open.filter((d) => {
-      const close = new Date(d.estimatedCloseAt);
-      return close >= today && close < endMonth;
-    }).length - visible.length,
+  // Ventana de proyecto: usa projectStartAt/projectEndAt. Si faltan, cae al
+  // cierre estimado como inicio + 2 meses de duración por default.
+  const projectWindow = (d: Deal) => {
+    const start = d.projectStartAt ? new Date(d.projectStartAt) : new Date(d.estimatedCloseAt);
+    let end: Date;
+    if (d.projectEndAt) end = new Date(d.projectEndAt);
+    else {
+      end = new Date(start);
+      end.setMonth(end.getMonth() + 2);
+    }
+    return { start, end };
+  };
+
+  // El Gantt grafica en función a las FECHAS DEL PROYECTO (inicio → fin),
+  // no a la recurrencia. Mostramos los proyectos que solapan el horizonte.
+  const windowed = useMemo(
+    () =>
+      open
+        .map((d) => ({ d, ...projectWindow(d) }))
+        .filter(({ end, start }) => end >= startMonth && start < endMonth)
+        .sort((a, b) => a.start.getTime() - b.start.getTime()),
+    [open, startMonth, endMonth],
   );
+  const visible = windowed.slice(0, 14);
+  const hidden = Math.max(0, windowed.length - visible.length);
 
-  const saasH = 80;
-  const saasSeries = useMemo(() => {
-    const series: number[] = new Array(horizon).fill(0);
-    const recurring = open.filter((d) => d.isRecurring && d.arr > 0);
-    recurring.forEach((d) => {
-      const closeIdx = Math.floor(
-        (new Date(d.estimatedCloseAt).getTime() - startMonth.getTime()) /
-          (1000 * 60 * 60 * 24 * 30.44),
-      );
-      const mrr = (d.arr / 12) * d.probability;
-      for (let i = Math.max(0, closeIdx); i < horizon; i++) series[i] += mrr;
+  const saasH = 96;
+  const monthIdxOf = (d: Date) =>
+    (d.getFullYear() - startMonth.getFullYear()) * 12 + (d.getMonth() - startMonth.getMonth());
+
+  // Dos series ACUMULADAS, ponderadas por prob:
+  // - SETUP: el costo del proyecto se REPARTE entre los meses del proyecto
+  //   (se reconoce mes a mes desde el inicio hasta el fin del proyecto).
+  // - SaaS: recurrente, arranca el mes SIGUIENTE al fin del proyecto y se acumula.
+  const { setupSeries, saasSeries, billingSeries } = useMemo(() => {
+    const setup: number[] = new Array(horizon).fill(0);
+    const saas: number[] = new Array(horizon).fill(0);
+    open.forEach((d) => {
+      const { start, end } = projectWindow(d);
+      const startIdx = monthIdxOf(start);
+      const endIdx = monthIdxOf(end);
+      const durMonths = Math.max(1, endIdx - startIdx); // meses del proyecto
+      const w = d.probability;
+      const monthlySetup = (d.value * w) / durMonths; // setup repartido por mes
+      const mrr = d.isRecurring && d.arr > 0 ? (d.arr / 12) * w : 0;
+      for (let i = 0; i < horizon; i++) {
+        // SETUP: se reconoce mes a mes durante el proyecto (start..end)
+        const elapsed = Math.max(0, Math.min(i - startIdx + 1, durMonths));
+        setup[i] += monthlySetup * elapsed;
+        // SaaS: arranca el mes siguiente al fin del proyecto
+        if (mrr && i > endIdx) saas[i] += mrr * (i - endIdx);
+      }
     });
-    return series;
+    return { setupSeries: setup, saasSeries: saas, billingSeries: setup.map((s, i) => s + saas[i]) };
   }, [open, horizon, startMonth]);
-  const maxSaas = Math.max(1, ...saasSeries);
+  const maxBilling = Math.max(1, ...setupSeries, ...saasSeries);
+  const SETUP_COLOR = "#7c3aed"; // violeta = Setup
+  const SAAS_COLOR = "#0ea5e9"; // azul = SaaS recurrente
 
-  const saasPath = useMemo(() => {
-    if (!saasSeries.length) return "";
-    const pts = saasSeries.map((v, i) => {
-      const x = ((i + 0.5) / horizon) * 100;
-      const y = saasH - (v / maxSaas) * saasH;
+  // Construye un path de línea suave (cubic) a partir de una serie.
+  const buildLine = (series: number[]) => {
+    if (!series.length) return "";
+    const pts = series.map((v, i) => {
+      const x = (i / (horizon - 1)) * 100;
+      const y = saasH - (v / maxBilling) * saasH;
       return [x, y] as const;
     });
-    let d = `M0,${saasH} L${pts[0][0]},${pts[0][1]}`;
+    let dStr = `M${pts[0][0]},${pts[0][1]}`;
     for (let i = 1; i < pts.length; i++) {
       const [x1, y1] = pts[i - 1];
       const [x2, y2] = pts[i];
       const cx = (x1 + x2) / 2;
-      d += ` C${cx},${y1} ${cx},${y2} ${x2},${y2}`;
+      dStr += ` C${cx},${y1} ${cx},${y2} ${x2},${y2}`;
     }
-    d += ` L100,${pts[pts.length - 1][1]}`;
-    return d;
-  }, [saasSeries, horizon, maxSaas]);
-  const saasArea = saasPath + ` L100,${saasH} L0,${saasH} Z`;
+    return dStr;
+  };
+  const setupLine = buildLine(setupSeries);
+  const saasLine = buildLine(saasSeries);
 
   const todayPct = dayToPct(today);
   const rowH = 22;
   const chartH = Math.max(60, visible.length * rowH + 8);
 
+  if (view === "band") {
   return (
     <div style={{ marginTop: 14 }}>
       <div
@@ -321,37 +385,91 @@ function TimelineChart({
             fontSize: 10, fontFamily: "var(--font-mono)",
             textTransform: "uppercase", letterSpacing: "0.06em",
             color: "var(--fg-3)",
-            zIndex: 2,
+            zIndex: 3,
             display: "flex", alignItems: "center", gap: 6,
           }}
         >
           <Icon name="dollar" size={11} style={{ color: "var(--info)" }} />
-          SaaS MRR proyectado · {fmtMoney(saasSeries[saasSeries.length - 1] || 0, currency)} run-rate al mes {horizon}
+          Facturación proyectada · {fmtMoney(billingSeries[billingSeries.length - 1] || 0, currency)} acum. al mes {horizon}
+          <span style={{ display: "inline-flex", gap: 10, textTransform: "none", letterSpacing: 0, marginLeft: 6 }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 3, color: SETUP_COLOR }}>
+              <span style={{ width: 8, height: 8, borderRadius: 2, background: SETUP_COLOR }} /> Setup
+            </span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 3, color: SAAS_COLOR }}>
+              <span style={{ width: 8, height: 8, borderRadius: 2, background: SAAS_COLOR }} /> SaaS
+            </span>
+          </span>
         </div>
-        <svg viewBox={`0 0 100 ${saasH}`} preserveAspectRatio="none" style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}>
-          <defs>
-            <linearGradient id={`saas-grad-${horizon}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="var(--info)" stopOpacity="0.35" />
-              <stop offset="100%" stopColor="var(--info)" stopOpacity="0.02" />
-            </linearGradient>
-          </defs>
-          <path d={saasArea} fill={`url(#saas-grad-${horizon})`} />
-          <path d={saasPath} fill="none" stroke="var(--info)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
-        </svg>
+
+        {/* Dos líneas acumuladas: SETUP (violeta, repartido en el proyecto)
+            + SaaS (azul, post-proyecto). */}
+        <div style={{ position: "absolute", left: 12, right: 58, bottom: 14, top: 30 }}>
+          <svg viewBox={`0 0 100 ${saasH}`} preserveAspectRatio="none" style={{ width: "100%", height: "100%", overflow: "visible" }}>
+            <path d={`${setupLine} L100,${saasH} L0,${saasH} Z`} fill={SETUP_COLOR} opacity="0.07" />
+            <path d={`${saasLine} L100,${saasH} L0,${saasH} Z`} fill={SAAS_COLOR} opacity="0.07" />
+            <path d={setupLine} fill="none" stroke={SETUP_COLOR} strokeWidth="1.8" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
+            <path d={saasLine} fill="none" stroke={SAAS_COLOR} strokeWidth="1.8" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
+          </svg>
+        </div>
+
+        {/* Escala numérica (eje Y) de lo que se cobrará */}
         <div
           style={{
             position: "absolute",
-            left: todayPct + "%", top: 0, bottom: 0,
-            width: 1, background: "var(--accent)",
-            opacity: 0.6,
+            right: 8, top: 28, bottom: 14,
+            display: "flex", flexDirection: "column",
+            justifyContent: "space-between", alignItems: "flex-end",
+            fontFamily: "var(--font-mono)", fontSize: 9,
+          }}
+        >
+          <span style={{ color: "var(--info)", fontWeight: 600 }}>{fmtMoney(maxBilling, currency)}</span>
+          <span style={{ color: "var(--fg-3)" }}>{fmtMoney(maxBilling / 2, currency)}</span>
+          <span style={{ color: "var(--fg-4)" }}>0</span>
+        </div>
+
+        {/* Línea de hoy */}
+        <div
+          style={{
+            position: "absolute",
+            left: `calc(12px + (100% - 70px) * ${todayPct / 100})`, top: 24, bottom: 14,
+            width: 1, background: "var(--accent)", opacity: 0.5, zIndex: 2,
           }}
         />
-        <div style={{ position: "absolute", top: 8, right: 8, fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--info)" }}>
-          {fmtMoney(maxSaas, currency)}
+
+        {/* eje X: mes inicial → mes final */}
+        <div style={{ position: "absolute", left: 12, bottom: 2, fontFamily: "var(--font-mono)", fontSize: 8.5, color: "var(--fg-4)" }}>
+          {MONTH_SHORT_ES[months[0]?.getMonth() ?? 0]}'{months[0]?.getFullYear() % 100}
         </div>
-        <div style={{ position: "absolute", bottom: 4, right: 8, fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--fg-3)" }}>
-          0
+        <div style={{ position: "absolute", right: 58, bottom: 2, fontFamily: "var(--font-mono)", fontSize: 8.5, color: "var(--fg-4)" }}>
+          {MONTH_SHORT_ES[months[horizon - 1]?.getMonth() ?? 0]}'{months[horizon - 1]?.getFullYear() % 100}
         </div>
+      </div>
+    </div>
+  );
+  }
+
+  // view === "gantt" — línea de tiempo de proyectos
+  return (
+    <div>
+      {/* Leyenda: cómo leer las barras del Gantt */}
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 14,
+          fontSize: 10.5,
+          color: "var(--fg-3)",
+          margin: "8px 2px 4px",
+          alignItems: "center",
+        }}
+      >
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+          <span style={{ width: 26, height: 9, borderRadius: 3, background: "var(--accent)" }} />
+          Cada barra = duración del proyecto (inicio → fin)
+        </span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+          🔁 Recurrente (etiqueta = ARR/año) · resto = valor de setup
+        </span>
       </div>
 
       <div
@@ -369,26 +487,32 @@ function TimelineChart({
       >
         {visible.length === 0 && (
           <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", color: "var(--fg-3)", fontSize: 12 }}>
-            Sin deals cerrando en este horizonte
+            Sin proyectos en este horizonte
           </div>
         )}
-        {visible.map((d, i) => {
-          const startPct = Math.max(0, dayToPct(d.createdAt));
-          const endPct = Math.min(100, dayToPct(d.estimatedCloseAt));
-          const widthPct = Math.max(2, endPct - startPct);
+        {visible.map(({ d, start, end }, i) => {
+          // Barra = ventana del proyecto (inicio → fin), recortada al horizonte.
+          const left = Math.max(0, dayToPct(start));
+          const endPct = Math.min(100, dayToPct(end));
+          const width = Math.max(2, endPct - left);
+          const isRec = d.isRecurring && d.arr > 0;
           const color = stageColorById(d.stage);
+          const chip = isRec ? `${fmtMoney(d.arr, currency)}/año` : fmtMoney(d.value, currency);
+          const fmtD = (dt: Date) => dt.toLocaleDateString("es-PE", { day: "2-digit", month: "short", year: "2-digit" });
           return (
             <div
               key={d.id}
               onClick={() => onOpenDeal(d.id)}
-              title={`${d.name} · ${d.company} · ${fmtMoney(d.value, currency)} · cierre ${new Date(d.estimatedCloseAt).toLocaleDateString("es-PE")}`}
+              title={`${d.name} · ${d.company} · proyecto ${fmtD(start)} → ${fmtD(end)} · ${fmtMoney(d.value, currency)}${isRec ? ` · ARR ${fmtMoney(d.arr, currency)}/año` : ""}`}
               style={{
                 position: "absolute",
-                left: `max(${startPct}%, ${todayPct}%)`,
+                left: left + "%",
                 top: 4 + i * rowH,
                 height: rowH - 4,
-                width: `calc(${widthPct}% - (max(${startPct}%, ${todayPct}%) - ${startPct}%))`,
-                background: color,
+                width: width + "%",
+                background: isRec
+                  ? `linear-gradient(to right, ${color} 0%, ${color} 70%, ${color}cc 100%)`
+                  : color,
                 borderRadius: 3,
                 fontSize: 10,
                 fontFamily: "var(--font-mono)",
@@ -402,11 +526,11 @@ function TimelineChart({
               }}
             >
               <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
-                {d.isRecurring && "🔁 "}
+                {isRec && "🔁 "}
                 {d.name}
               </span>
-              <span style={{ marginLeft: "auto", background: "rgba(255,255,255,.2)", padding: "0 4px", borderRadius: 2, flexShrink: 0 }}>
-                {fmtMoney(d.value, currency)}
+              <span style={{ marginLeft: "auto", background: "rgba(255,255,255,.22)", padding: "0 4px", borderRadius: 2, flexShrink: 0 }}>
+                {chip}
               </span>
             </div>
           );
@@ -414,8 +538,8 @@ function TimelineChart({
       </div>
 
       <div style={{ display: "flex", marginTop: 4 }}>
-        {buckets.map((b, i) => {
-          const monthLbl = MONTH_SHORT_ES[b.month.getMonth()];
+        {months.map((m, i) => {
+          const monthLbl = MONTH_SHORT_ES[m.getMonth()];
           return (
             <div
               key={i}
@@ -427,7 +551,7 @@ function TimelineChart({
                 color: "var(--fg-3)",
               }}
             >
-              {horizon <= 12 || i % 3 === 0 ? `${monthLbl}'${b.month.getFullYear() % 100}` : ""}
+              {horizon <= 12 || i % 3 === 0 ? `${monthLbl}'${m.getFullYear() % 100}` : ""}
             </div>
           );
         })}
@@ -435,9 +559,216 @@ function TimelineChart({
 
       {hidden > 0 && (
         <div style={{ fontSize: 11, color: "var(--fg-3)", marginTop: 8, textAlign: "center" }}>
-          + {hidden} tratos más cerrando en este horizonte (no mostrados)
+          + {hidden} proyectos más en este horizonte (no mostrados)
         </div>
       )}
     </div>
+  );
+}
+
+/* ============================================================
+   MonthlyBillingChart — facturación MENSUAL (columnas por mes)
+   kind="setup": costo del proyecto repartido por su duración.
+   kind="saas":  MRR recurrente que arranca al terminar el proyecto.
+   ============================================================ */
+export function MonthlyBillingChart({
+  deals,
+  today,
+  currency,
+  kind,
+}: {
+  deals: Deal[];
+  today: Date;
+  currency: Currency;
+  kind: "setup" | "saas";
+}) {
+  const HORIZON = 24;
+  const startMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  const monthIdxOf = (d: Date) =>
+    (d.getFullYear() - startMonth.getFullYear()) * 12 + (d.getMonth() - startMonth.getMonth());
+  const projectWindow = (d: Deal) => {
+    const start = d.projectStartAt ? new Date(d.projectStartAt) : new Date(d.estimatedCloseAt);
+    let end: Date;
+    if (d.projectEndAt) end = new Date(d.projectEndAt);
+    else {
+      end = new Date(start);
+      end.setMonth(end.getMonth() + 2);
+    }
+    return { start, end };
+  };
+
+  const open = useMemo(
+    () => deals.filter((d) => d.stage !== "won" && d.stage !== "lost"),
+    [deals],
+  );
+
+  // Serie mensual (lo que se factura ESE mes, no acumulado), ponderado por prob.
+  const series = useMemo(() => {
+    const arr: number[] = new Array(HORIZON).fill(0);
+    open.forEach((d) => {
+      const { start, end } = projectWindow(d);
+      const startIdx = monthIdxOf(start);
+      const endIdx = monthIdxOf(end);
+      const dur = Math.max(1, endIdx - startIdx);
+      const w = d.probability;
+      if (kind === "setup") {
+        const monthly = (d.value * w) / dur; // setup repartido por la duración
+        for (let i = Math.max(0, startIdx); i < Math.min(HORIZON, startIdx + dur); i++) arr[i] += monthly;
+      } else {
+        if (!d.isRecurring || !d.arr) return;
+        const mrr = (d.arr / 12) * w; // SaaS mensual desde el fin del proyecto
+        for (let i = Math.max(0, endIdx + 1); i < HORIZON; i++) arr[i] += mrr;
+      }
+    });
+    return arr;
+  }, [open, kind]);
+
+  const max = Math.max(1, ...series);
+  const total = series.reduce((a, b) => a + b, 0);
+  const peak = Math.max(...series);
+  const months = Array.from(
+    { length: HORIZON },
+    (_, i) => new Date(startMonth.getFullYear(), startMonth.getMonth() + i, 1),
+  );
+  const color = kind === "setup" ? "#7c3aed" : "#0ea5e9";
+  const title = kind === "setup" ? "Facturación SETUP · mes a mes" : "Facturación SaaS · mes a mes";
+  const sub =
+    kind === "setup"
+      ? "Costo del proyecto repartido por su duración"
+      : "MRR recurrente desde el fin del proyecto";
+  const chartH = 150;
+
+  return (
+    <div className="card">
+      <div className="card__h">
+        <Icon name="dollar" size={14} style={{ color }} />
+        <span style={{ fontWeight: 600 }}>{title}</span>
+        <span className="card__sub">{sub} · pico {fmtMoney(peak, currency)}/mes</span>
+      </div>
+      <div className="card__b">
+        <div style={{ display: "flex", gap: 8 }}>
+          {/* Eje Y — escala de plata */}
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "space-between",
+              height: chartH - 16,
+              fontFamily: "var(--font-mono)",
+              fontSize: 9.5,
+              color: "var(--fg-3)",
+              textAlign: "right",
+              minWidth: 46,
+            }}
+          >
+            <span style={{ color, fontWeight: 600 }}>{fmtMoney(max, currency)}</span>
+            <span>{fmtMoney(max * 0.66, currency)}</span>
+            <span>{fmtMoney(max * 0.33, currency)}</span>
+            <span style={{ color: "var(--fg-4)" }}>0</span>
+          </div>
+          {/* Columnas por mes + gridlines */}
+          <div style={{ flex: 1 }}>
+            <div
+              style={{
+                position: "relative",
+                height: chartH - 16,
+                backgroundImage:
+                  "repeating-linear-gradient(to top, transparent, transparent calc(33.33% - 1px), var(--border-2) calc(33.33% - 1px), var(--border-2) 33.33%)",
+              }}
+            >
+              <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "flex-end", gap: 2 }}>
+                {series.map((v, i) => (
+                  <div
+                    key={i}
+                    title={`${MONTH_LONG_ES[months[i].getMonth()]} '${months[i].getFullYear() % 100} · ${fmtMoney(v, currency)}`}
+                    style={{
+                      flex: 1,
+                      height: `${(v / max) * 100}%`,
+                      minHeight: v > 0 ? 2 : 0,
+                      background: color,
+                      borderRadius: "2px 2px 0 0",
+                      opacity: 0.92,
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+            {/* Eje X — meses */}
+            <div style={{ display: "flex", marginTop: 5 }}>
+              {months.map((m, i) => (
+                <div
+                  key={i}
+                  style={{
+                    flex: 1,
+                    textAlign: "center",
+                    fontFamily: "var(--font-mono)",
+                    fontSize: 8.5,
+                    color: "var(--fg-4)",
+                  }}
+                >
+                  {i % 3 === 0 ? `${MONTH_SHORT_ES[m.getMonth()]}'${m.getFullYear() % 100}` : ""}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div style={{ marginTop: 10, fontSize: 11, color: "var(--fg-3)" }}>
+          Total {HORIZON}m: <b className="mono" style={{ color: "var(--fg-2)" }}>{fmtMoney(total, currency)}</b>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   ProjectGanttCard — Gantt de proyectos (card independiente, al final).
+   Línea de tiempo por fechas de proyecto (inicio → fin), con toggle 12/24/36.
+   ============================================================ */
+export function ProjectGanttCard({
+  deals,
+  today,
+  currency,
+  onOpenDeal,
+}: {
+  deals: Deal[];
+  today: Date;
+  currency: Currency;
+  onOpenDeal: (id: string) => void;
+}) {
+  const [horizon, setHorizon] = useState<Horizon>(36);
+  const open = useMemo(
+    () => deals.filter((d) => d.stage !== "won" && d.stage !== "lost"),
+    [deals],
+  );
+
+  return (
+    <Card>
+      <Card.Header label="Gantt de proyectos" sub="Línea de tiempo por fechas de proyecto (inicio → fin)">
+        <Icon name="gantt" size={14} style={{ color: "var(--accent)" }} />
+        <span style={{ fontWeight: 600 }}>Gantt de proyectos</span>
+      </Card.Header>
+      <Card.Body style={{ padding: "12px 16px 16px" }}>
+        <div className="fc-horizons">
+          {([12, 24, 36] as Horizon[]).map((h) => (
+            <button
+              key={h}
+              type="button"
+              className={horizon === h ? "is-active" : ""}
+              onClick={() => setHorizon(h)}
+            >
+              {h} meses
+            </button>
+          ))}
+        </div>
+        <TimelineChart
+          open={open}
+          today={today}
+          horizon={horizon}
+          currency={currency}
+          onOpenDeal={onOpenDeal}
+          view="gantt"
+        />
+      </Card.Body>
+    </Card>
   );
 }

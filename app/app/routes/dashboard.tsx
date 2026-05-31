@@ -6,7 +6,7 @@ import {
   useWorkspaceLoaderData,
   type Currency,
 } from "../lib/store";
-import { fmtMoney, fmtMoneyFull, clamp, daysBetween } from "../lib/format";
+import { fmtMoney, fmtMoneyFull, daysBetween } from "../lib/format";
 import {
   computeArrTotal,
   computeMrr,
@@ -26,7 +26,7 @@ import {
   computeCartera,
 } from "../lib/metrics";
 import { Icon, type IconName } from "../components/shell/Icon";
-import { ForecastHorizons } from "../components/dashboard/ForecastHorizons";
+import { ForecastHorizons, MonthlyBillingChart, ProjectGanttCard } from "../components/dashboard/ForecastHorizons";
 import { KpiDetailDrawer, type KpiId } from "../components/dashboard/KpiDetailDrawer";
 import type { Deal, OwnersByKey, Workspace } from "../lib/types";
 
@@ -626,26 +626,8 @@ export default function DashboardRoute() {
   const sparkConversion = trend(conversionRate, 9, 6.3);
   const sparkLost = trend(lostValue, 12, 7.1, "noisy");
   const sparkClients = trend(customers.length, 12, 8.9);
+  const sparkOpen = trend(open.length, 12, 9.5);
 
-  // ---------- Forecast por etapa (weighted bar + funnel) ----------
-  // IMPORTANTE: usar ws.stages (dinámicos del workspace, editables) — no STAGES const.
-  const stageBreakdown = ws.stages.filter((s) => s.id !== "won" && s.id !== "lost").map((s) => {
-    const ds = open.filter((d) => d.stage === s.id);
-    return {
-      ...s,
-      sum: ds.reduce((a, d) => a + d.value * d.probability, 0),
-      count: ds.length,
-    };
-  });
-  const funnel = ws.stages.filter((s) => s.id !== "lost").map((s) => {
-    const ds = ws.deals.filter((d) => d.stage === s.id);
-    return {
-      ...s,
-      totalValue: ds.reduce((a, d) => a + d.value, 0),
-      count: ds.length,
-    };
-  });
-  const maxFunnel = Math.max(...funnel.map((f) => f.totalValue), 1);
 
   // ---------- Leaderboard ----------
   const leaderboard: OwnerRow[] = Object.entries(ws.owners as OwnersByKey)
@@ -655,7 +637,7 @@ export default function DashboardRoute() {
       return { k, name: o.name, role: o.role, color: o.color, won: wonV, deals: ds.length };
     })
     .sort((a, b) => b.won - a.won);
-  const maxLB = Math.max(...leaderboard.map((l) => l.won), 1);
+  const lbTotal = leaderboard.reduce((a, o) => a + o.won, 0);
 
   // ---------- SaaS (todas via lib/metrics — match exacto con drawer) ----------
   const recurring = ws.deals.filter((d) => d.isRecurring);
@@ -668,16 +650,16 @@ export default function DashboardRoute() {
   const cacPay = computeCacPayback(ws.deals);
   const ltvCac = computeLtvCac(ws.deals);
 
-  // ---------- Time in Stage (decorativo: no hay event log real) ----------
-  // Usa ws.stages (dinámicos) — si el admin agrega/renombra etapas, se reflejan acá.
-  const timeInStage = ws.stages.filter((s) => s.id !== "won" && s.id !== "lost").map((s, i) => ({
-    ...s,
-    avg: workspace === "sharky" ? [4, 8, 12, 10, 8][i] || 6 : [8, 14, 22, 18, 14][i] || 12,
-  }));
+  // ---------- Pipeline bruto por etapa (sin ponderar, incluye Closed Won) ----------
+  const funnel = ws.stages.filter((s) => s.id !== "lost").map((s) => {
+    const ds = ws.deals.filter((d) => d.stage === s.id);
+    return { ...s, totalValue: ds.reduce((a, d) => a + d.value, 0), count: ds.length };
+  });
+  const maxFunnel = Math.max(...funnel.map((f) => f.totalValue), 1);
 
   return (
     <div className="dash">
-      {/* ───── 8 KPI cards ───── */}
+      {/* ───── 9 KPI cards ───── */}
       <div className="dash__row dash__row--kpi">
         <Kpi label="Forecast Proyectado" value={fmtMoney(forecastValue, currency)} delta="+18.4%" deltaDir="up" help="Σ valor × prob IA" spark={sparkForecast} sparkColor="var(--accent)" onClick={() => setKpiDetail("forecast")} />
         <Kpi label="Sales Velocity" value={avgSalesVelocity + "d"} delta="-3d" deltaDir="up" help="Lead → Cierre" spark={sparkVelocity} sparkColor="#16a34a" sparkInvert onClick={() => setKpiDetail("velocity")} />
@@ -686,65 +668,12 @@ export default function DashboardRoute() {
         <Kpi label="Tasa de Conversión" value={conversionRate + "%"} delta="+3.2pp" deltaDir="up" help="Lead → Cliente" spark={sparkConversion} onClick={() => setKpiDetail("conversion")} />
         <Kpi label="Forecast Perdido" value={fmtMoney(lostValue, currency)} delta={lost.length + " tratos"} deltaDir="down" help="Σ valor de tratos Lost" spark={sparkLost} sparkColor="var(--danger)" sparkInvert onClick={() => setKpiDetail("lost_forecast")} />
         <Kpi label="Clientes activos" value={customersCount.toString()} delta={customerArr > 0 ? "ARR " + fmtMoney(customerArr, currency) : "+1 este Q"} deltaDir="up" help="Cuentas con ≥ 1 trato ganado" spark={sparkClients} onClick={() => setKpiDetail("clients")} />
+        <Kpi label="Oportunidades vigentes" value={open.length.toString()} delta={fmtMoney(pipelineValue, currency)} deltaDir="up" help="Abiertas · sin won ni lost" spark={sparkOpen} sparkColor="var(--accent)" onClick={() => setKpiDetail("open_deals")} />
         <Kpi label="Cartera total" value={carteraCount.toString()} delta={`${carteraCount - carteraLostOnly} activos · ${carteraLostOnly} solo lost`} deltaDir="up" help="Empresas únicas en el CRM (incluye perdidos)" spark={sparkClients} sparkColor="var(--fg-3)" onClick={() => setKpiDetail("cartera")} />
       </div>
 
-      {/* ───── Forecast por etapa + AI Forecast ───── */}
-      <div className="dash__row dash__row--split">
-        <div className="card">
-          <div className="card__h">
-            <Icon name="trending" size={14} style={{ color: "var(--accent)" }} />
-            <span style={{ fontWeight: 600 }}>Forecast por etapa</span>
-            <span className="card__sub">Σ ponderado {fmtMoney(forecastValue, currency)} · Σ pipeline {fmtMoney(pipelineValue, currency)}</span>
-          </div>
-          <div className="card__b">
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, fontSize: 11, color: "var(--fg-3)", fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-              <Icon name="sparkles" size={11} style={{ color: "var(--accent)" }} />
-              Forecast ponderado · Σ (valor × prob IA)
-              <span style={{ marginLeft: "auto", color: "var(--fg-2)" }}>{fmtMoney(forecastValue, currency)}</span>
-            </div>
-            <div className="forecast-bar">
-              {stageBreakdown.map((s) => {
-                const pct = (s.sum / Math.max(1, forecastValue)) * 100;
-                if (pct < 0.5) return null;
-                return (
-                  <div key={s.id} style={{ background: s.color, width: pct + "%" }}>
-                    {pct > 8 ? fmtMoney(s.sum, currency) : ""}
-                  </div>
-                );
-              })}
-            </div>
-            <div style={{ display: "flex", gap: 14, marginTop: 12, flexWrap: "wrap" }}>
-              {stageBreakdown.map((s) => (
-                <div key={s.id} className="forecast-legend">
-                  <span className="dot" style={{ background: s.color }} />
-                  <span style={{ color: "var(--fg-2)" }}>{s.label}</span>
-                  <span className="mono" style={{ color: "var(--fg-3)" }}>{s.count}</span>
-                </div>
-              ))}
-            </div>
-
-            <div style={{ height: 1, background: "var(--border-2)", margin: "16px 0 12px" }} />
-
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 11, color: "var(--fg-3)", fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-              <Icon name="dollar" size={11} />
-              Pipeline bruto · sin ponderar (incluye Closed Won)
-              <span style={{ marginLeft: "auto", color: "var(--fg-2)" }}>{fmtMoney(funnel.reduce((a, s) => a + s.totalValue, 0), currency)}</span>
-            </div>
-            <div className="stage-funnel">
-              {funnel.map((s) => (
-                <div key={s.id} className="stage-funnel__row">
-                  <span style={{ color: "var(--fg-2)" }}>{s.label}</span>
-                  <div className="stage-funnel__bar">
-                    <div style={{ width: (s.totalValue / maxFunnel) * 100 + "%", background: s.color }} />
-                  </div>
-                  <span className="stage-funnel__val">{fmtMoney(s.totalValue, currency)}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
+      {/* ───── AI Forecast · Pipeline weighted ───── */}
+      <div className="dash__row" style={{ gridTemplateColumns: "1fr" }}>
         <div className="card">
           <div className="card__h">
             <Icon name="sparkles" size={14} style={{ color: "var(--accent)" }} />
@@ -773,23 +702,41 @@ export default function DashboardRoute() {
               </div>
             </div>
 
-            <div style={{ marginTop: 14 }}>
-              <div style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--fg-3)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 6 }}>
-                Top features (SHAP)
-              </div>
-              {[
-                { f: "Tiempo en etapa", w: 0.92, dir: "down" as const },
-                { f: "Tamaño cuenta", w: 0.78, dir: "up" as const },
-                { f: "Engagement WA", w: 0.71, dir: "up" as const },
-                { f: "# stakeholders", w: 0.58, dir: "up" as const },
-                { f: "Industria fit", w: 0.42, dir: "up" as const },
-              ].map((f) => (
-                <div key={f.f} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                  <span style={{ fontSize: 12, color: "var(--fg-2)", flex: 1 }}>{f.f}</span>
-                  <div style={{ flex: 2, height: 4, background: "var(--bg-3)", borderRadius: 999 }}>
-                    <div style={{ width: f.w * 100 + "%", height: "100%", background: f.dir === "up" ? "var(--success)" : "var(--warning)", borderRadius: 999 }} />
+          </div>
+        </div>
+      </div>
+
+      {/* ───── Forecast por horizonte (debajo del KPI Pipeline total) ───── */}
+      <ForecastHorizons
+        deals={ws.deals}
+        today={ws.today}
+        currency={currency}
+        onOpenDeal={(id) => setSelectedDeal(id)}
+      />
+
+      {/* ───── Facturación mensual: SETUP + SaaS (charts independientes) ───── */}
+      <div className="dash__row" style={{ gridTemplateColumns: "1fr 1fr" }}>
+        <MonthlyBillingChart deals={ws.deals} today={ws.today} currency={currency} kind="setup" />
+        <MonthlyBillingChart deals={ws.deals} today={ws.today} currency={currency} kind="saas" />
+      </div>
+
+      {/* ───── Pipeline bruto por etapa ───── */}
+      <div className="dash__row" style={{ gridTemplateColumns: "1fr" }}>
+        <div className="card">
+          <div className="card__h">
+            <Icon name="dollar" size={14} style={{ color: "var(--success)" }} />
+            <span style={{ fontWeight: 600 }}>Pipeline bruto por etapa</span>
+            <span className="card__sub">sin ponderar · incluye Closed Won · {fmtMoney(funnel.reduce((a, s) => a + s.totalValue, 0), currency)}</span>
+          </div>
+          <div className="card__b">
+            <div className="stage-funnel">
+              {funnel.map((s) => (
+                <div key={s.id} className="stage-funnel__row">
+                  <span style={{ color: "var(--fg-2)" }}>{s.label}</span>
+                  <div className="stage-funnel__bar">
+                    <div style={{ width: (s.totalValue / maxFunnel) * 100 + "%", background: s.color }} />
                   </div>
-                  <span className="mono" style={{ fontSize: 10, color: "var(--fg-3)", width: 32, textAlign: "right" }}>{f.w.toFixed(2)}</span>
+                  <span className="stage-funnel__val">{fmtMoney(s.totalValue, currency)}</span>
                 </div>
               ))}
             </div>
@@ -797,8 +744,8 @@ export default function DashboardRoute() {
         </div>
       </div>
 
-      {/* ───── SaaS · Time in Stage · Leaderboard ───── */}
-      <div className="dash__row dash__row--3">
+      {/* ───── Métricas SaaS · Leaderboard ───── */}
+      <div className="dash__row" style={{ gridTemplateColumns: "1.4fr 1fr" }}>
         <div className="card">
           <div className="card__h">
             <Icon name="dollar" size={14} style={{ color: "var(--success)" }} />
@@ -845,53 +792,25 @@ export default function DashboardRoute() {
 
         <div className="card">
           <div className="card__h">
-            <Icon name="clock" size={14} />
-            <span style={{ fontWeight: 600 }}>Time in Stage</span>
-          </div>
-          <div className="card__b">
-            <div className="stage-funnel">
-              {timeInStage.map((s) => (
-                <div key={s.id} className="stage-funnel__row">
-                  <span style={{ color: "var(--fg-2)" }}>{s.label}</span>
-                  <div className="stage-funnel__bar">
-                    <div style={{ width: clamp((s.avg / 30) * 100, 6, 100) + "%", background: s.avg > 18 ? "var(--warning)" : s.color }} />
-                  </div>
-                  <span className="stage-funnel__val">{s.avg}d</span>
-                </div>
-              ))}
-            </div>
-            <div style={{ fontSize: 11, color: "var(--warning)", marginTop: 12, display: "flex", alignItems: "center", gap: 6 }}>
-              <Icon name="alert" size={12} />
-              <span>2 tratos llevan +25d en Proposal — riesgo de stalling</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="card__h">
             <Icon name="users" size={14} />
             <span style={{ fontWeight: 600 }}>Leaderboard</span>
           </div>
           <div className="card__b">
-            <div className="leaderboard-layout">
-              <div className="leaderboard">
-                {leaderboard.map((o) => (
-                  <div key={o.k} className="leaderboard__row">
-                    <span style={{ width: 22, height: 22, borderRadius: 11, display: "inline-grid", placeItems: "center", fontSize: 10, fontWeight: 600, fontFamily: "var(--font-mono)", color: "#fff", background: `linear-gradient(135deg, ${o.color}aa, ${o.color})` }}>
-                      {o.k}
-                    </span>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 13 }}>{o.name}</div>
-                      <div style={{ fontSize: 10, color: "var(--fg-3)", fontFamily: "var(--font-mono)" }}>{o.role}</div>
-                    </div>
-                    <div className="leaderboard__bar">
-                      <div style={{ width: (o.won / maxLB) * 100 + "%", background: o.color }} />
-                    </div>
-                    <div className="mono" style={{ fontSize: 12, textAlign: "right" }}>{fmtMoney(o.won, currency)}</div>
-                  </div>
-                ))}
-              </div>
+            <div className="lb-exec">
               <LeaderboardPie data={leaderboard} />
+              <ul className="lb-legend">
+                {leaderboard.map((o) => {
+                  const pct = lbTotal ? (o.won / lbTotal) * 100 : 0;
+                  return (
+                    <li key={o.k} className="lb-legend__row" title={`${o.name} · ${o.role}`}>
+                      <span className="lb-legend__dot" style={{ background: o.color }} />
+                      <span className="lb-legend__name">{o.name}</span>
+                      <span className="lb-legend__val mono">{fmtMoney(o.won, currency)}</span>
+                      <span className="lb-legend__pct mono">{pct.toFixed(0)}%</span>
+                    </li>
+                  );
+                })}
+              </ul>
             </div>
           </div>
         </div>
@@ -900,14 +819,6 @@ export default function DashboardRoute() {
       {/* ───── NOVIT vs SHARKY ───── */}
       <WorkspaceComparison currency={currency} />
 
-      {/* ───── ForecastHorizons (12/24/36 meses + Timeline+SaaS) ───── */}
-      <ForecastHorizons
-        deals={ws.deals}
-        today={ws.today}
-        currency={currency}
-        onOpenDeal={(id) => setSelectedDeal(id)}
-      />
-
       {/* ───── Top 10 + AI Recommendations ───── */}
       <div className="dash__row dash__row--split">
         <Top10Card ws={ws} currency={currency} onOpenDeal={(id) => setSelectedDeal(id)} />
@@ -915,6 +826,16 @@ export default function DashboardRoute() {
           ws={ws}
           currency={currency}
           onOpenAI={() => openAI()}
+          onOpenDeal={(id) => setSelectedDeal(id)}
+        />
+      </div>
+
+      {/* ───── Gantt de proyectos (al final) ───── */}
+      <div className="dash__row" style={{ gridTemplateColumns: "1fr" }}>
+        <ProjectGanttCard
+          deals={ws.deals}
+          today={ws.today}
+          currency={currency}
           onOpenDeal={(id) => setSelectedDeal(id)}
         />
       </div>

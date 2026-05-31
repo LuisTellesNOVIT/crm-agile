@@ -165,10 +165,13 @@ model Deal {
   probability      Float    // 0..1, derivada de stage
   ai               Int      // 0..100 AI score
   source           String?  // fb_ads | linkedin | web | referral
+  tags             String[] @default([]) // palabras clave: sector, lead, cliente, etc.
   createdAt        DateTime @default(now())
   estimatedCloseAt DateTime
   closedAt         DateTime?
   lastActivityAt   DateTime @default(now())
+  projectStartAt   DateTime? // inicio del proyecto/entrega
+  projectEndAt     DateTime? // fin del proyecto/entrega
 
   workspaceId String
   workspace   Workspace @relation(fields: [workspaceId], references: [id])

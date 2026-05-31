@@ -1,6 +1,7 @@
 import type { ActionFunctionArgs } from "react-router";
 import { prisma } from "../lib/db.server";
 import { stageProbability } from "../lib/stages";
+import { parseTags } from "../lib/tags";
 import { requireUser } from "../lib/session.server";
 
 /**
@@ -241,11 +242,41 @@ export async function action({ request }: ActionFunctionArgs) {
     else data.estimatedCloseAt = d;
   }
 
+  // ─── fechas de proyecto (inicio / fin) ─────────────────
+  // String vacío → null (limpia la fecha). Fecha válida → la setea.
+  const projStart = form.get("projectStartAt");
+  if (projStart != null) {
+    const v = String(projStart).trim();
+    if (!v) data.projectStartAt = null;
+    else {
+      const d = new Date(v);
+      if (Number.isNaN(d.getTime())) errors.push("Fecha de inicio de proyecto inválida");
+      else data.projectStartAt = d;
+    }
+  }
+  const projEnd = form.get("projectEndAt");
+  if (projEnd != null) {
+    const v = String(projEnd).trim();
+    if (!v) data.projectEndAt = null;
+    else {
+      const d = new Date(v);
+      if (Number.isNaN(d.getTime())) errors.push("Fecha de fin de proyecto inválida");
+      else data.projectEndAt = d;
+    }
+  }
+
   // ─── source ────────────────────────────────────────────
   const source = form.get("source");
   if (source != null) {
     const v = String(source).trim();
     data.source = v || null;
+  }
+
+  // ─── tags (palabras clave, separadas por coma) ─────────
+  // El campo "tags" llega como CSV; lo normalizamos (trim + dedupe).
+  const tagsRaw = form.get("tags");
+  if (tagsRaw != null) {
+    data.tags = parseTags(String(tagsRaw));
   }
 
   // ─── publicId (renombrar código público) ───────────────

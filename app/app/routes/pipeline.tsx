@@ -14,6 +14,7 @@ import { useActiveWorkspace, useAppStore, useCurrentUser, type Currency } from "
 import { fmtMoney, daysBetween } from "../lib/format";
 import { Icon, type IconName } from "../components/shell/Icon";
 import { PipelineStageEditor } from "../components/pipeline/PipelineStageEditor";
+import { tagColor } from "../lib/tags";
 import type { Deal, OwnersByKey, Stage } from "../lib/types";
 
 /* ============================================================
@@ -47,6 +48,15 @@ function daysInStage(deal: Deal, today: Date): number {
 function inferWs(deal: Deal): "novit" | "sharky" {
   if (deal._ws) return deal._ws;
   return deal.id.startsWith("SHARKY") ? "sharky" : "novit";
+}
+
+/**
+ * "SaaS-heavy" — el ARR anual recurrente supera al setup (one-time) en un año.
+ * Son los tratos de setup bajo pero alto valor recurrente que conviene priorizar.
+ * Se marcan con ★ + color dorado para detectarlos rápido en el pipeline.
+ */
+export function isHighSaaS(d: Deal): boolean {
+  return d.isRecurring && d.arr > 0 && d.arr > d.value;
 }
 
 /* ============================================================
@@ -331,6 +341,13 @@ export default function PipelineRoute() {
         )}
       </div>
 
+      {/* Gráfico de valor SETUP por etapa (entre filtros y kanban) */}
+      <SetupByStageChart
+        stages={ws.stages}
+        deals={ws.deals.filter(filterDeal)}
+        currency={currency}
+      />
+
       {viewMode === "kanban" ? (
         <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
           <div className="pipeline">
@@ -412,6 +429,9 @@ function PipelineColumn({
   }, [allDeals, stage.id, optimisticPatch]);
   const filtered = ds.filter(filterDeal);
   const sum = filtered.reduce((a, d) => a + d.value, 0);
+  // ARR anual agregado de los tratos SaaS recurrentes de esta etapa.
+  const recurring = filtered.filter((d) => d.isRecurring && d.arr > 0);
+  const arrSum = recurring.reduce((a, d) => a + d.arr, 0);
 
   const isOpen = stage.id !== "won" && stage.id !== "lost";
   const isLost = stage.id === "lost";
@@ -450,6 +470,14 @@ function PipelineColumn({
       </div>
       <div className="pipe-col__subhead">
         <span className="pipe-col__sum">{fmtMoney(sum, currency)}</span>
+        {arrSum > 0 && (
+          <span
+            className="pipe-col__arr"
+            title={`ARR anual de ${recurring.length} SaaS recurrente${recurring.length !== 1 ? "s" : ""} en esta etapa`}
+          >
+            <Icon name="trending" size={9} /> {fmtMoney(arrSum, currency)}/año
+          </span>
+        )}
         {isOpen && (
           <span className="pipe-col__prob" title="Probabilidad de cierre">
             <span className="pipe-col__prob-track">
@@ -619,11 +647,44 @@ function KanbanCard({
           <span className="deal-card__co-link" title={deal.company}>
             {deal.company}
           </span>
-          {deal.isRecurring && <span className="deal-card__saas">SaaS</span>}
         </div>
+
+        {deal.tags.length > 0 && (
+          <div className="deal-card__tags">
+            {deal.tags.slice(0, 4).map((t) => {
+              const c = tagColor(t);
+              return (
+                <span
+                  key={t}
+                  className="deal-card__tag"
+                  style={{ background: c.bg, color: c.fg, borderColor: c.border }}
+                >
+                  {t}
+                </span>
+              );
+            })}
+            {deal.tags.length > 4 && (
+              <span className="deal-card__tag deal-card__tag--more">+{deal.tags.length - 4}</span>
+            )}
+          </div>
+        )}
 
         <div className="deal-card__money">
           <span className="deal-card__value">{fmtMoney(deal.value, currency)}</span>
+          {deal.isRecurring && (
+            <span
+              className={`deal-card__saas ${isHighSaaS(deal) ? "is-high" : ""}`.trim()}
+              title={
+                isHighSaaS(deal)
+                  ? `Alto valor recurrente — ARR anual ${fmtMoney(deal.arr, currency)} supera el setup ${fmtMoney(deal.value, currency)}`
+                  : deal.arr > 0
+                    ? `SaaS recurrente · ARR anual ${fmtMoney(deal.arr, currency)}`
+                    : "Contrato recurrente"
+              }
+            >
+              SaaS{deal.arr > 0 ? ` · ${fmtMoney(deal.arr, currency)}/año` : ""}
+            </span>
+          )}
           <span className="deal-card__ai" title={`AI confidence: ${deal.ai}%`}>
             <span className="deal-card__ai-ring" style={{ "--p": deal.ai } as React.CSSProperties}>
               <span>{deal.ai}</span>
@@ -680,7 +741,7 @@ function KanbanCard({
    Soporta dos sub-modos: "grouped" (agrupada por etapa) y "flat"
    (tabla plana ordenable). Edición inline de stage por dropdown.
    ============================================================ */
-type SortKey = "value" | "ai" | "age" | "stage" | "company";
+type SortKey = "value" | "saas" | "ai" | "age" | "stage" | "company";
 type SortDir = "asc" | "desc";
 
 function PipelineListView({
@@ -719,19 +780,26 @@ function PipelineListView({
       );
   }, [deals, filterDeal, optimisticPatch]);
 
-  // Stats por stage para los headers
+  // Stats por stage para los headers (incluye ARR anual de SaaS recurrentes)
   const stageStats = useMemo(() => {
-    const m = new Map<Stage["id"], { count: number; total: number }>();
-    for (const s of stages) m.set(s.id, { count: 0, total: 0 });
+    const m = new Map<Stage["id"], { count: number; total: number; arr: number }>();
+    for (const s of stages) m.set(s.id, { count: 0, total: 0, arr: 0 });
     for (const d of patched) {
       const s = m.get(d.stage);
       if (s) {
         s.count++;
         s.total += d.value;
+        if (d.isRecurring && d.arr > 0) s.arr += d.arr;
       }
     }
     return m;
   }, [patched, stages]);
+
+  // ARR anual total (todos los SaaS recurrentes filtrados) para el header de la lista.
+  const arrTotal = useMemo(
+    () => patched.filter((d) => d.isRecurring && d.arr > 0).reduce((a, d) => a + d.arr, 0),
+    [patched],
+  );
 
   // ── State para sort (flat) y collapsed groups (grouped) ──
   const [sortKey, setSortKey] = useState<SortKey>("value");
@@ -751,6 +819,7 @@ function PipelineListView({
     sorted.sort((a, b) => {
       let cmp = 0;
       if (sortKey === "value") cmp = a.value - b.value;
+      else if (sortKey === "saas") cmp = (a.isRecurring ? a.arr : 0) - (b.isRecurring ? b.arr : 0);
       else if (sortKey === "ai") cmp = a.ai - b.ai;
       else if (sortKey === "age")
         cmp =
@@ -799,6 +868,11 @@ function PipelineListView({
         </div>
         <div className="pipe-list__head-meta">
           {patched.length} tratos · {fmtMoney(patched.reduce((a, d) => a + d.value, 0), currency)} total
+          {arrTotal > 0 && (
+            <span className="pipe-list__head-arr" title="ARR anual de SaaS recurrentes">
+              {" · "}ARR {fmtMoney(arrTotal, currency)}/año
+            </span>
+          )}
         </div>
       </div>
 
@@ -806,7 +880,7 @@ function PipelineListView({
         {listMode === "grouped" ? (
           <div className="pipe-list__groups">
             {stages.map((stage) => {
-              const stat = stageStats.get(stage.id) ?? { count: 0, total: 0 };
+              const stat = stageStats.get(stage.id) ?? { count: 0, total: 0, arr: 0 };
               const rows = patched
                 .filter((d) => d.stage === stage.id)
                 .sort((a, b) => b.value - a.value);
@@ -836,6 +910,14 @@ function PipelineListView({
                     <span className="pipe-list-group__prob mono">
                       {Math.round(stage.prob * 100)}%
                     </span>
+                    {stat.arr > 0 && (
+                      <span
+                        className="pipe-list-group__arr mono"
+                        title="ARR anual de SaaS recurrentes en esta etapa"
+                      >
+                        ARR {fmtMoney(stat.arr, currency)}/año
+                      </span>
+                    )}
                     <span className="pipe-list-group__total mono">
                       {fmtMoney(stat.total, currency)}
                     </span>
@@ -905,10 +987,24 @@ function ListTable({
   sortDir?: SortDir;
   onSort?: (k: SortKey) => void;
 }) {
-  const SortHead = ({ k, children }: { k: SortKey; children: React.ReactNode }) => (
+  const SortHead = ({
+    k,
+    children,
+    align,
+  }: {
+    k: SortKey;
+    children: React.ReactNode;
+    align?: "right" | "center";
+  }) => (
     <button
       type="button"
-      className={`pipe-list-table__th ${sortKey === k ? "is-sorted" : ""}`.trim()}
+      className={`pipe-list-table__th ${
+        align === "right"
+          ? "pipe-list-table__th--right"
+          : align === "center"
+            ? "pipe-list-table__th--center"
+            : ""
+      } ${sortKey === k ? "is-sorted" : ""}`.replace(/\s+/g, " ").trim()}
       onClick={() => onSort?.(k)}
     >
       {children}
@@ -936,9 +1032,10 @@ function ListTable({
           onSort ? <SortHead k="stage">Etapa</SortHead> : <span className="pipe-list-table__th">Etapa</span>
         )}
         <span className="pipe-list-table__th pipe-list-table__th--center">Owner</span>
-        {onSort ? <SortHead k="value">Valor</SortHead> : <span className="pipe-list-table__th pipe-list-table__th--right">Valor</span>}
-        {onSort ? <SortHead k="ai">AI</SortHead> : <span className="pipe-list-table__th pipe-list-table__th--right">AI</span>}
-        {onSort ? <SortHead k="age">Edad</SortHead> : <span className="pipe-list-table__th pipe-list-table__th--right">Edad</span>}
+        {onSort ? <SortHead k="value" align="right">Valor</SortHead> : <span className="pipe-list-table__th pipe-list-table__th--right">Valor</span>}
+        {onSort ? <SortHead k="saas" align="right">SaaS/año</SortHead> : <span className="pipe-list-table__th pipe-list-table__th--right">SaaS/año</span>}
+        {onSort ? <SortHead k="ai" align="right">AI</SortHead> : <span className="pipe-list-table__th pipe-list-table__th--right">AI</span>}
+        {onSort ? <SortHead k="age" align="right">Edad</SortHead> : <span className="pipe-list-table__th pipe-list-table__th--right">Edad</span>}
       </div>
       {rows.map((d) => (
         <ListRow
@@ -984,7 +1081,12 @@ function ListRow({
 
   return (
     <div
-      className={`pipe-list-table__row ${hideStageColumn ? "no-stage-col" : ""}`.trim()}
+      className={`pipe-list-table__row ${hideStageColumn ? "no-stage-col" : ""} ${isHighSaaS(deal) ? "is-high-saas" : ""}`.trim()}
+      title={
+        isHighSaaS(deal)
+          ? `Alto valor recurrente — ARR anual ${fmtMoney(deal.arr, currency)} supera el setup ${fmtMoney(deal.value, currency)}`
+          : undefined
+      }
       onClick={() => onOpenDeal(deal.id)}
     >
       <span className="pipe-list-table__cell pipe-list-table__cell--company">
@@ -992,9 +1094,29 @@ function ListRow({
         <span className="pipe-list-table__id mono">{deal.id}</span>
       </span>
       <span className="pipe-list-table__cell pipe-list-table__cell--name">
-        {deal.name}
-        {deal.isRecurring && (
-          <span className="pipe-list-table__saas">SaaS</span>
+        <span className="pipe-list-table__name-line">
+          {deal.name}
+        </span>
+        {deal.tags.length > 0 && (
+          <span className="pipe-list-table__tags">
+            {deal.tags.slice(0, 4).map((t) => {
+              const c = tagColor(t);
+              return (
+                <span
+                  key={t}
+                  className="pipe-list-table__tag"
+                  style={{ background: c.bg, color: c.fg, borderColor: c.border }}
+                >
+                  {t}
+                </span>
+              );
+            })}
+            {deal.tags.length > 4 && (
+              <span className="pipe-list-table__tag pipe-list-table__tag--more">
+                +{deal.tags.length - 4}
+              </span>
+            )}
+          </span>
         )}
       </span>
       {!hideStageColumn && (
@@ -1022,6 +1144,22 @@ function ListRow({
       </span>
       <span className="pipe-list-table__cell pipe-list-table__cell--right mono pipe-list-table__value">
         {fmtMoney(deal.value, currency)}
+      </span>
+      <span className="pipe-list-table__cell pipe-list-table__cell--right mono">
+        {deal.isRecurring && deal.arr > 0 ? (
+          <span
+            className={`pipe-list-table__arr ${isHighSaaS(deal) ? "is-high" : ""}`.trim()}
+            title={
+              isHighSaaS(deal)
+                ? `SaaS anual ${fmtMoney(deal.arr, currency)} — supera el setup ${fmtMoney(deal.value, currency)}`
+                : `SaaS anual ${fmtMoney(deal.arr, currency)}`
+            }
+          >
+            {fmtMoney(deal.arr, currency)}
+          </span>
+        ) : (
+          <span style={{ color: "var(--fg-4)" }}>—</span>
+        )}
       </span>
       <span className="pipe-list-table__cell pipe-list-table__cell--right">
         <span
@@ -1094,5 +1232,91 @@ function StageSelect({
         </div>
       )}
     </span>
+  );
+}
+
+/* ============================================================
+   SetupByStageChart — valor de SETUP por etapa (área tipo curva)
+   Va entre los filtros y el kanban. Suma deal.value por etapa.
+   ============================================================ */
+function SetupByStageChart({
+  stages,
+  deals,
+  currency,
+}: {
+  stages: Stage[];
+  deals: Deal[];
+  currency: Currency;
+}) {
+  const data = useMemo(
+    () =>
+      stages.map((s) => ({
+        stage: s,
+        setup: deals.filter((d) => d.stage === s.id).reduce((a, d) => a + d.value, 0),
+      })),
+    [stages, deals],
+  );
+  const total = data.reduce((a, d) => a + d.setup, 0);
+  const max = Math.max(1, ...data.map((d) => d.setup));
+  const n = Math.max(1, data.length);
+  const H = 70;
+  const xOf = (i: number) => ((i + 0.5) / n) * 100;
+  const yOf = (v: number) => H - (v / max) * H;
+
+  const line = (() => {
+    if (!data.length) return "";
+    const pts = data.map((d, i) => [xOf(i), yOf(d.setup)] as const);
+    let dStr = `M${pts[0][0]},${pts[0][1]}`;
+    for (let i = 1; i < pts.length; i++) {
+      const [x1, y1] = pts[i - 1];
+      const [x2, y2] = pts[i];
+      const cx = (x1 + x2) / 2;
+      dStr += ` C${cx},${y1} ${cx},${y2} ${x2},${y2}`;
+    }
+    return dStr;
+  })();
+  const area = line
+    ? `M0,${H} L${xOf(0)},${yOf(data[0].setup)} ${line.replace(/^M[^C]*/, "")} L100,${H} Z`
+    : "";
+
+  return (
+    <div className="setup-stage-chart">
+      <div className="setup-stage-chart__head">
+        <Icon name="dollar" size={11} style={{ color: "var(--info)" }} />
+        Valor SETUP por etapa · {fmtMoney(total, currency)} total
+        <span className="setup-stage-chart__max mono">{fmtMoney(max, currency)}</span>
+      </div>
+      <div className="setup-stage-chart__plot">
+        <svg viewBox={`0 0 100 ${H}`} preserveAspectRatio="none" className="setup-stage-chart__svg">
+          <defs>
+            <linearGradient id="setup-stage-grad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="var(--info)" stopOpacity="0.32" />
+              <stop offset="100%" stopColor="var(--info)" stopOpacity="0.02" />
+            </linearGradient>
+          </defs>
+          <path d={area} fill="url(#setup-stage-grad)" />
+          <path d={line} fill="none" stroke="var(--info)" strokeWidth="1.6" vectorEffect="non-scaling-stroke" />
+        </svg>
+        {data.map((d, i) => (
+          <span
+            key={d.stage.id}
+            className="setup-stage-chart__dot"
+            style={{ left: `${xOf(i)}%`, top: `${(yOf(d.setup) / H) * 100}%`, background: d.stage.color }}
+            title={`${d.stage.label}: ${fmtMoney(d.setup, currency)}`}
+          />
+        ))}
+      </div>
+      <div className="setup-stage-chart__axis">
+        {data.map((d) => (
+          <span key={d.stage.id} className="setup-stage-chart__axis-lbl">
+            <span className="setup-stage-chart__axis-name">
+              <span className="dot" style={{ background: d.stage.color }} />
+              {d.stage.label}
+            </span>
+            <b className="mono">{fmtMoney(d.setup, currency)}</b>
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }

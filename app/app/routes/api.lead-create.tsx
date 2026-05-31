@@ -1,5 +1,6 @@
 import type { ActionFunctionArgs } from "react-router";
 import { prisma } from "../lib/db.server";
+import { parseTags } from "../lib/tags";
 import { requireUser } from "../lib/session.server";
 
 /**
@@ -42,6 +43,7 @@ export async function action({ request }: ActionFunctionArgs) {
   const estimatedValueRaw = String(fd.get("estimatedValue") ?? "0").trim();
   const stageKey = String(fd.get("stage") ?? "").trim();
   const dealNameRaw = String(fd.get("dealName") ?? "").trim();
+  const tags = parseTags(String(fd.get("tags") ?? ""));
 
   // ── Validaciones ────────────────────────────────────────
   const errors: string[] = [];
@@ -153,6 +155,10 @@ export async function action({ request }: ActionFunctionArgs) {
   // Fecha estimada de cierre = hoy + 60 días (default)
   const estimatedCloseAt = new Date();
   estimatedCloseAt.setDate(estimatedCloseAt.getDate() + 60);
+  // Proyecto por default: arranca al cierre y dura 2 meses (editable luego).
+  const projectStartAt = new Date(estimatedCloseAt);
+  const projectEndAt = new Date(estimatedCloseAt);
+  projectEndAt.setMonth(projectEndAt.getMonth() + 2);
 
   const deal = await prisma.deal.create({
     data: {
@@ -164,7 +170,10 @@ export async function action({ request }: ActionFunctionArgs) {
       probability: probabilityFinal,
       ai: 50, // AI score inicial neutro
       source,
+      tags,
       estimatedCloseAt,
+      projectStartAt,
+      projectEndAt,
       closedAt: isWonOrLost ? new Date() : null,
       workspaceId: ws.id,
       companyId: company.id,

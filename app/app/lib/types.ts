@@ -76,11 +76,14 @@ export type Deal = {
   probability: number;
   createdAt: string;
   estimatedCloseAt: string;
+  projectStartAt?: string | null;
+  projectEndAt?: string | null;
   lastActivity: number;
   contacts: number;
   isRecurring: boolean;
   arr: number;
   source?: string | null;
+  tags: string[];
   _ws?: WorkspaceId;
 };
 
