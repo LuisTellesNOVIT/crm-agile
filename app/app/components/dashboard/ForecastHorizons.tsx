@@ -582,7 +582,7 @@ export function MonthlyBillingChart({
   currency: Currency;
   kind: "setup" | "saas";
 }) {
-  const HORIZON = 24;
+  const HORIZON = 12;
   const startMonth = new Date(today.getFullYear(), today.getMonth(), 1);
   const monthIdxOf = (d: Date) =>
     (d.getFullYear() - startMonth.getFullYear()) * 12 + (d.getMonth() - startMonth.getMonth());
@@ -770,5 +770,155 @@ export function ProjectGanttCard({
         />
       </Card.Body>
     </Card>
+  );
+}
+
+/* ============================================================
+   SetupByStageMonthlyChart — facturación SETUP mensual, una LÍNEA por etapa.
+   Cada proyecto reparte su setup por la duración; se agrupa por la etapa
+   actual del trato (líneas de color por etapa).
+   ============================================================ */
+export function SetupByStageMonthlyChart({
+  stages,
+  deals,
+  today,
+  currency,
+}: {
+  stages: { id: StageId; label: string; color: string }[];
+  deals: Deal[];
+  today: Date;
+  currency: Currency;
+}) {
+  const HORIZON = 12;
+  const H = 80;
+  const startMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  const monthIdxOf = (d: Date) =>
+    (d.getFullYear() - startMonth.getFullYear()) * 12 + (d.getMonth() - startMonth.getMonth());
+  const projectWindow = (d: Deal) => {
+    const start = d.projectStartAt ? new Date(d.projectStartAt) : new Date(d.estimatedCloseAt);
+    let end: Date;
+    if (d.projectEndAt) end = new Date(d.projectEndAt);
+    else {
+      end = new Date(start);
+      end.setMonth(end.getMonth() + 2);
+    }
+    return { start, end };
+  };
+
+  const open = useMemo(
+    () => deals.filter((d) => d.stage !== "won" && d.stage !== "lost"),
+    [deals],
+  );
+  const openStages = stages.filter((s) => s.id !== "won" && s.id !== "lost");
+
+  // Una serie mensual por etapa (setup repartido por duración), ponderada por prob.
+  const series = useMemo(() => {
+    const map = new Map<string, number[]>();
+    openStages.forEach((s) => map.set(s.id, new Array(HORIZON).fill(0)));
+    open.forEach((d) => {
+      const arr = map.get(d.stage);
+      if (!arr) return;
+      const { start, end } = projectWindow(d);
+      const startIdx = monthIdxOf(start);
+      const endIdx = monthIdxOf(end);
+      const dur = Math.max(1, endIdx - startIdx);
+      const monthly = (d.value * d.probability) / dur;
+      for (let i = Math.max(0, startIdx); i < Math.min(HORIZON, startIdx + dur); i++) arr[i] += monthly;
+    });
+    return openStages
+      .map((s) => ({ stage: s, data: map.get(s.id)!, total: map.get(s.id)!.reduce((a, b) => a + b, 0) }))
+      .filter((s) => s.total > 0);
+  }, [open, openStages]);
+
+  const max = Math.max(1, ...series.flatMap((s) => s.data));
+  const grandTotal = series.reduce((a, s) => a + s.total, 0);
+  const months = Array.from(
+    { length: HORIZON },
+    (_, i) => new Date(startMonth.getFullYear(), startMonth.getMonth() + i, 1),
+  );
+
+  const buildLine = (data: number[]) => {
+    const pts = data.map((v, i) => [(i / (HORIZON - 1)) * 100, H - (v / max) * H] as const);
+    let dStr = `M${pts[0][0]},${pts[0][1]}`;
+    for (let i = 1; i < pts.length; i++) {
+      const [x1, y1] = pts[i - 1];
+      const [x2, y2] = pts[i];
+      const cx = (x1 + x2) / 2;
+      dStr += ` C${cx},${y1} ${cx},${y2} ${x2},${y2}`;
+    }
+    return dStr;
+  };
+
+  return (
+    <div className="card">
+      <div className="card__h">
+        <Icon name="dollar" size={14} style={{ color: "#7c3aed" }} />
+        <span style={{ fontWeight: 600 }}>Facturación SETUP por etapa · mes a mes</span>
+        <span className="card__sub">Setup repartido por duración · agrupado por etapa</span>
+      </div>
+      <div className="card__b">
+        <div style={{ display: "flex", gap: 8 }}>
+          {/* Eje Y — escala de plata */}
+          <div
+            style={{
+              display: "flex", flexDirection: "column", justifyContent: "space-between",
+              height: H, fontFamily: "var(--font-mono)", fontSize: 9.5,
+              color: "var(--fg-3)", textAlign: "right", minWidth: 46,
+            }}
+          >
+            <span style={{ color: "#7c3aed", fontWeight: 600 }}>{fmtMoney(max, currency)}</span>
+            <span>{fmtMoney(max * 0.66, currency)}</span>
+            <span>{fmtMoney(max * 0.33, currency)}</span>
+            <span style={{ color: "var(--fg-4)" }}>0</span>
+          </div>
+          {/* Líneas por etapa */}
+          <div style={{ flex: 1 }}>
+            <div
+              style={{
+                position: "relative",
+                height: H,
+                backgroundImage:
+                  "repeating-linear-gradient(to top, transparent, transparent calc(33.33% - 1px), var(--border-2) calc(33.33% - 1px), var(--border-2) 33.33%)",
+              }}
+            >
+              <svg viewBox={`0 0 100 ${H}`} preserveAspectRatio="none" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", overflow: "visible" }}>
+                {series.map((s) => (
+                  <path
+                    key={s.stage.id}
+                    d={buildLine(s.data)}
+                    fill="none"
+                    stroke={s.stage.color}
+                    strokeWidth="1.8"
+                    vectorEffect="non-scaling-stroke"
+                    strokeLinejoin="round"
+                  />
+                ))}
+              </svg>
+            </div>
+            {/* Eje X — meses */}
+            <div style={{ display: "flex", marginTop: 5 }}>
+              {months.map((m, i) => (
+                <div key={i} style={{ flex: 1, textAlign: "center", fontFamily: "var(--font-mono)", fontSize: 8.5, color: "var(--fg-4)" }}>
+                  {i % 3 === 0 ? `${MONTH_SHORT_ES[m.getMonth()]}'${m.getFullYear() % 100}` : ""}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        {/* Leyenda por etapa */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 14px", marginTop: 10, fontSize: 11 }}>
+          {series.map((s) => (
+            <span key={s.stage.id} style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "var(--fg-2)" }}>
+              <span style={{ width: 12, height: 3, borderRadius: 2, background: s.stage.color }} />
+              {s.stage.label}
+              <b className="mono" style={{ color: "var(--fg)" }}>{fmtMoney(s.total, currency)}</b>
+            </span>
+          ))}
+          <span style={{ marginLeft: "auto", color: "var(--fg-3)" }}>
+            Total {HORIZON}m: <b className="mono" style={{ color: "var(--fg-2)" }}>{fmtMoney(grandTotal, currency)}</b>
+          </span>
+        </div>
+      </div>
+    </div>
   );
 }

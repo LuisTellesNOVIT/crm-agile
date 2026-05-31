@@ -1263,21 +1263,22 @@ function SetupByStageChart({
   const xOf = (i: number) => ((i + 0.5) / n) * 100;
   const yOf = (v: number) => H - (v / max) * H;
 
-  const line = (() => {
-    if (!data.length) return "";
-    const pts = data.map((d, i) => [xOf(i), yOf(d.setup)] as const);
-    let dStr = `M${pts[0][0]},${pts[0][1]}`;
-    for (let i = 1; i < pts.length; i++) {
-      const [x1, y1] = pts[i - 1];
-      const [x2, y2] = pts[i];
-      const cx = (x1 + x2) / 2;
-      dStr += ` C${cx},${y1} ${cx},${y2} ${x2},${y2}`;
-    }
-    return dStr;
-  })();
-  const area = line
-    ? `M0,${H} L${xOf(0)},${yOf(data[0].setup)} ${line.replace(/^M[^C]*/, "")} L100,${H} Z`
-    : "";
+  const pts = data.map((d, i) => [xOf(i), yOf(d.setup)] as const);
+  // Color por segmento según la etapa DESTINO: won → verde, lost → rojo, resto → azul.
+  const segColor = (s: Stage) =>
+    s.id === "won" ? "#16a34a" : s.id === "lost" ? "#dc2626" : "var(--info)";
+  const segments = data.slice(1).map((d, idx) => {
+    const i = idx + 1;
+    const [x1, y1] = pts[i - 1];
+    const [x2, y2] = pts[i];
+    const cx = (x1 + x2) / 2;
+    return {
+      key: d.stage.id,
+      color: segColor(d.stage),
+      lineD: `M${x1},${y1} C${cx},${y1} ${cx},${y2} ${x2},${y2}`,
+      areaD: `M${x1},${H} L${x1},${y1} C${cx},${y1} ${cx},${y2} ${x2},${y2} L${x2},${H} Z`,
+    };
+  });
 
   return (
     <div className="setup-stage-chart">
@@ -1288,20 +1289,18 @@ function SetupByStageChart({
       </div>
       <div className="setup-stage-chart__plot">
         <svg viewBox={`0 0 100 ${H}`} preserveAspectRatio="none" className="setup-stage-chart__svg">
-          <defs>
-            <linearGradient id="setup-stage-grad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="var(--info)" stopOpacity="0.32" />
-              <stop offset="100%" stopColor="var(--info)" stopOpacity="0.02" />
-            </linearGradient>
-          </defs>
-          <path d={area} fill="url(#setup-stage-grad)" />
-          <path d={line} fill="none" stroke="var(--info)" strokeWidth="1.6" vectorEffect="non-scaling-stroke" />
+          {segments.map((s, i) => (
+            <g key={i}>
+              <path d={s.areaD} fill={s.color} fillOpacity={0.12} />
+              <path d={s.lineD} fill="none" stroke={s.color} strokeWidth="1.8" vectorEffect="non-scaling-stroke" strokeLinecap="round" />
+            </g>
+          ))}
         </svg>
         {data.map((d, i) => (
           <span
             key={d.stage.id}
             className="setup-stage-chart__dot"
-            style={{ left: `${xOf(i)}%`, top: `${(yOf(d.setup) / H) * 100}%`, background: d.stage.color }}
+            style={{ left: `${xOf(i)}%`, top: `${(yOf(d.setup) / H) * 100}%`, background: d.stage.id === "lost" ? "#dc2626" : d.stage.id === "won" ? "#16a34a" : d.stage.color }}
             title={`${d.stage.label}: ${fmtMoney(d.setup, currency)}`}
           />
         ))}

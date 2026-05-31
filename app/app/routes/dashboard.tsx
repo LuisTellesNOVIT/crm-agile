@@ -26,7 +26,7 @@ import {
   computeCartera,
 } from "../lib/metrics";
 import { Icon, type IconName } from "../components/shell/Icon";
-import { ForecastHorizons, MonthlyBillingChart, ProjectGanttCard } from "../components/dashboard/ForecastHorizons";
+import { ForecastHorizons, MonthlyBillingChart, ProjectGanttCard, SetupByStageMonthlyChart } from "../components/dashboard/ForecastHorizons";
 import { KpiDetailDrawer, type KpiId } from "../components/dashboard/KpiDetailDrawer";
 import type { Deal, OwnersByKey, Workspace } from "../lib/types";
 
@@ -714,9 +714,9 @@ export default function DashboardRoute() {
         onOpenDeal={(id) => setSelectedDeal(id)}
       />
 
-      {/* ───── Facturación mensual: SETUP + SaaS (charts independientes) ───── */}
+      {/* ───── Facturación mensual: SETUP por etapa + SaaS (charts independientes) ───── */}
       <div className="dash__row" style={{ gridTemplateColumns: "1fr 1fr" }}>
-        <MonthlyBillingChart deals={ws.deals} today={ws.today} currency={currency} kind="setup" />
+        <SetupByStageMonthlyChart stages={ws.stages} deals={ws.deals} today={ws.today} currency={currency} />
         <MonthlyBillingChart deals={ws.deals} today={ws.today} currency={currency} kind="saas" />
       </div>
 
