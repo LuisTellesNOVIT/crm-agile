@@ -1227,6 +1227,66 @@ a.nav-item.is-active { color: var(--fg); }
 }
 .pipe-filters::-webkit-scrollbar { display: none; }
 .pipe-filters__spacer { flex: 1; }
+
+/* ── Gráfico de valor SETUP por etapa (entre filtros y kanban) ── */
+.setup-stage-chart {
+  margin: 12px 16px 4px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius);
+  background: var(--bg);
+  padding: 10px 14px 8px;
+}
+.setup-stage-chart__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-3);
+  margin-bottom: 8px;
+}
+.setup-stage-chart__max { margin-left: auto; color: var(--info); font-weight: 600; }
+.setup-stage-chart__plot { position: relative; height: 78px; }
+.setup-stage-chart__svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.setup-stage-chart__dot {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  border: 1.5px solid var(--bg);
+  z-index: 1;
+}
+.setup-stage-chart__axis {
+  display: flex;
+  margin-top: 6px;
+  border-top: 1px solid var(--border-2);
+  padding-top: 6px;
+}
+.setup-stage-chart__axis-lbl {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  text-align: center;
+  min-width: 0;
+}
+.setup-stage-chart__axis-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--fg-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.setup-stage-chart__axis-name .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.setup-stage-chart__axis-lbl b { font-size: 12px; color: var(--fg); }
 .pipe-filter {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 5px 11px;
@@ -1409,6 +1469,20 @@ a.nav-item.is-active { color: var(--fg); }
   font-weight: 500;
   color: var(--fg);
   letter-spacing: -0.015em;
+}
+.pipe-col__arr {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #0e7490;
+  background: rgba(8, 145, 178, 0.10);
+  border: 1px solid rgba(8, 145, 178, 0.22);
+  border-radius: 999px;
+  padding: 1px 7px;
+  white-space: nowrap;
 }
 .pipe-col__prob {
   margin-left: auto;
@@ -1593,6 +1667,7 @@ a.nav-item.is-active { color: var(--fg); }
   font-size: 11.5px;
   color: var(--fg-3);
   display: flex; align-items: center; gap: 6px;
+  flex-wrap: wrap;
 }
 .deal-card__co-link {
   color: var(--fg-2);
@@ -1613,6 +1688,68 @@ a.nav-item.is-active { color: var(--fg); }
   border-radius: 3px;
   padding: 0 4px;
   line-height: 1.5;
+  white-space: nowrap;
+}
+/* ── Tags multicolor en la card del kanban ── */
+.deal-card__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+.deal-card__tag {
+  font-size: 9.5px;
+  font-weight: 600;
+  line-height: 1.5;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 0 7px;
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.deal-card__tag--more {
+  background: var(--bg-3) !important;
+  color: var(--fg-3) !important;
+  border-color: var(--border) !important;
+}
+/* ── Chip de tag genérico (detalle del trato, etc.) ── */
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.6;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 1px 9px;
+  white-space: nowrap;
+}
+
+/* ── Marca "alto valor recurrente" (ARR anual > setup) — dorado + ★ ──
+   Resalta los tratos de setup bajo pero SaaS alto para detectarlos rápido. */
+.deal-card__saas.is-high,
+.pipe-list-table__saas.is-high {
+  background: linear-gradient(135deg, #fde68a, #f59e0b) !important;
+  color: #7c2d12 !important;
+  border: 1px solid #d97706 !important;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.18);
+  font-weight: 700;
+}
+.deal-detail__high-saas {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: linear-gradient(135deg, #fde68a, #f59e0b);
+  color: #7c2d12;
+  border: 1px solid #d97706;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.18);
 }
 .deal-card__money {
   display: flex; align-items: center; gap: 8px;
@@ -2682,12 +2819,30 @@ a.nav-item.is-active { color: var(--fg); }
   font-size: 11px;
   color: var(--fg-3);
 }
+.pipe-list-group__arr {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #0e7490;
+  background: rgba(8, 145, 178, 0.10);
+  border: 1px solid rgba(8, 145, 178, 0.22);
+  border-radius: 999px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+/* Cuando hay ARR, el total ya no empuja con margin-left:auto (el ARR lo hace). */
+.pipe-list-group__arr + .pipe-list-group__total {
+  margin-left: 10px;
+}
 .pipe-list-group__total {
   margin-left: auto;
   font-size: 14px;
   font-weight: 600;
   color: var(--fg);
 }
+.pipe-list__head-arr { color: #0e7490; }
 .pipe-list-group__empty {
   padding: 16px 14px;
   text-align: center;
@@ -2702,7 +2857,7 @@ a.nav-item.is-active { color: var(--fg); }
 }
 .pipe-list-table__row {
   display: grid;
-  grid-template-columns: 180px 1fr 170px 56px 110px 70px 70px;
+  grid-template-columns: 180px 1fr 170px 56px 110px 96px 70px 70px;
   gap: 10px;
   padding: 10px 14px;
   border-bottom: 1px solid var(--border-2);
@@ -2715,7 +2870,27 @@ a.nav-item.is-active { color: var(--fg); }
   background: var(--bg-2);
 }
 .pipe-list-table__row.no-stage-col {
-  grid-template-columns: 180px 1fr 56px 110px 70px 70px;
+  grid-template-columns: 180px 1fr 56px 110px 96px 70px 70px;
+}
+/* Fila resaltada en amarillo claro — alto valor recurrente (ARR anual > setup).
+   Tono semitransparente para que funcione en tema claro y oscuro. */
+.pipe-list-table__row.is-high-saas {
+  background: rgba(250, 204, 21, 0.16);
+}
+.pipe-list-table__row.is-high-saas:hover {
+  background: rgba(250, 204, 21, 0.28);
+}
+/* Columna SaaS/año — ARR anual a la derecha del valor */
+.pipe-list-table__arr {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: #0e7490;
+  white-space: nowrap;
+}
+.pipe-list-table__arr.is-high {
+  color: #b45309;
+  font-weight: 700;
 }
 .pipe-list-table__row:last-child { border-bottom: none; }
 .pipe-list-table__row--head {
@@ -2745,6 +2920,9 @@ a.nav-item.is-active { color: var(--fg); }
   cursor: pointer;
   padding: 0;
   text-align: left;
+  /* width:100% asegura que el botón llene su celda del grid y que
+     justify-content (left/center/right) alinee el contenido como las filas. */
+  width: 100%;
   display: inline-flex;
   align-items: center;
 }
@@ -2782,6 +2960,16 @@ a.nav-item.is-active { color: var(--fg); }
   font-weight: 500;
   color: var(--fg);
   overflow: hidden;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+}
+.pipe-list-table__name-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2794,6 +2982,28 @@ a.nav-item.is-active { color: var(--fg); }
   padding: 1px 5px;
   border-radius: 3px;
   letter-spacing: 0.04em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+/* ── Tags multicolor en la fila de lista ── */
+.pipe-list-table__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.pipe-list-table__tag {
+  font-size: 9.5px;
+  font-weight: 600;
+  line-height: 1.5;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 0 7px;
+  white-space: nowrap;
+}
+.pipe-list-table__tag--more {
+  background: var(--bg-3) !important;
+  color: var(--fg-3) !important;
+  border-color: var(--border) !important;
 }
 .pipe-list-table__cell--center { justify-content: center; }
 .pipe-list-table__cell--right { justify-content: flex-end; }
@@ -4377,6 +4587,57 @@ a.nav-item.is-active { color: var(--fg); }
   gap: 18px;
   align-items: center;
 }
+
+/* ── Leaderboard ejecutivo: donut + leyenda limpia ── */
+.lb-exec {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+.lb-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.lb-legend__row {
+  display: grid;
+  grid-template-columns: 10px 1fr auto 40px;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 4px;
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+}
+.lb-legend__row:hover { background: var(--bg-2); }
+.lb-legend__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.lb-legend__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg);
+}
+.lb-legend__val {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg);
+  text-align: right;
+}
+.lb-legend__pct {
+  font-size: 11px;
+  color: var(--fg-3);
+  text-align: right;
+}
 .leaderboard-pie {
   position: relative;
   width: 124px; height: 124px;
@@ -5033,6 +5294,60 @@ textarea.emp__input { resize: vertical; }
   letter-spacing: -0.01em;
 }
 
+/* Resumen por estado (Cartera) — Customer / Prospect / Lost-only */
+.kpi-drawer__status-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.kpi-drawer__status-cell {
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  border-left-width: 3px;
+}
+.kpi-drawer__status-cell small {
+  display: block;
+  font-size: 9.5px;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-3);
+}
+.kpi-drawer__status-cell b {
+  display: block;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.1;
+  margin-top: 2px;
+}
+.kpi-drawer__status-cell span {
+  font-size: 9.5px;
+  color: var(--fg-4);
+}
+.kpi-drawer__status-cell--customer {
+  background: var(--success-soft, rgba(22, 163, 74, 0.08));
+  border-left-color: var(--success);
+}
+.kpi-drawer__status-cell--customer b { color: var(--success); }
+.kpi-drawer__status-cell--prospect {
+  background: var(--accent-soft, rgba(99, 102, 241, 0.08));
+  border-left-color: var(--accent);
+}
+.kpi-drawer__status-cell--prospect b { color: var(--accent); }
+.kpi-drawer__status-cell--lost {
+  background: rgba(220, 38, 38, 0.08);
+  border-left-color: var(--danger);
+}
+.kpi-drawer__status-cell--lost b { color: var(--danger); }
+
+/* Numeración de empresas en la cartera */
+.kpi-drawer__num {
+  color: var(--fg-3);
+  margin-right: 6px;
+  font-weight: 600;
+}
+
 /* Cartera-specific */
 .kpi-drawer__cartera {
   display: flex;
@@ -5160,8 +5475,8 @@ textarea.emp__input { resize: vertical; }
 }
 .fc-summary {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px 0;
   margin-top: 18px;
   padding-top: 14px;
   border-top: 1px solid var(--border-2);
@@ -5171,6 +5486,8 @@ textarea.emp__input { resize: vertical; }
   border-right: 1px solid var(--border-2);
 }
 .fc-summary > div:last-child { border-right: none; }
+/* Las métricas SaaS (ARR run-rate + acumulado) se diferencian con el tono info */
+.fc-summary__saas small { color: var(--info); opacity: 0.85; }
 .fc-summary small {
   font-size: 10px;
   font-family: var(--font-mono);

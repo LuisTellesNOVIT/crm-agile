@@ -30,6 +30,7 @@ export type KpiId =
   | "lost_forecast"
   | "clients"
   | "cartera"
+  | "open_deals"
   // SaaS sub-metrics
   | "arr_total"
   | "mrr"
@@ -57,6 +58,7 @@ const KPI_META: Record<KpiId, { title: string; icon: Parameters<typeof Icon>[0][
   lost_forecast: { title: "Forecast Perdido", icon: "alert", color: "var(--danger)" },
   clients: { title: "Clientes activos", icon: "users", color: "var(--accent)" },
   cartera: { title: "Cartera total", icon: "users", color: "var(--fg-2)" },
+  open_deals: { title: "Oportunidades vigentes", icon: "kanban", color: "var(--accent)" },
   arr_total: { title: "ARR Total", icon: "trending", color: "var(--success)" },
   mrr: { title: "MRR estimado", icon: "trending", color: "var(--success)" },
   new_arr: { title: "New ARR ganado", icon: "trending", color: "var(--success)" },
@@ -119,6 +121,7 @@ export function KpiDetailDrawer({ kpiId, ws, currency, onClose, onOpenDeal }: Pr
           {kpiId === "lost_forecast" && <LostDetail ws={ws} currency={currency} onOpenDeal={onOpenDeal} />}
           {kpiId === "clients" && <ClientsDetail ws={ws} currency={currency} />}
           {kpiId === "cartera" && <CarteraDetail ws={ws} currency={currency} />}
+          {kpiId === "open_deals" && <OpenDealsDetail ws={ws} currency={currency} onOpenDeal={onOpenDeal} />}
           {kpiId === "arr_total" && <ArrTotalDetail ws={ws} currency={currency} onOpenDeal={onOpenDeal} />}
           {kpiId === "mrr" && <MrrDetail ws={ws} currency={currency} onOpenDeal={onOpenDeal} />}
           {kpiId === "new_arr" && <NewArrDetail ws={ws} currency={currency} onOpenDeal={onOpenDeal} />}
@@ -584,6 +587,8 @@ function CarteraDetail({ ws, currency }: { ws: Workspace; currency: Currency }) 
 
   const lostOnly = cos.filter(([, c]) => c.won === 0 && c.open === 0).length;
   const active = cos.length - lostOnly;
+  const customerCount = cos.filter(([, c]) => c.won > 0).length;
+  const prospectCount = cos.length - customerCount - lostOnly;
 
   return (
     <>
@@ -610,22 +615,44 @@ function CarteraDetail({ ws, currency }: { ws: Workspace; currency: Currency }) 
         contribuir simultáneamente a Pipeline (deals abiertos) y a ARR (deals won recurrentes).
       </Calc>
 
+      <SectionLabel>Resumen por estado</SectionLabel>
+      <div className="kpi-drawer__status-summary">
+        <div className="kpi-drawer__status-cell kpi-drawer__status-cell--customer">
+          <small>Customers</small>
+          <b className="mono">{customerCount}</b>
+          <span className="mono">≥ 1 trato won</span>
+        </div>
+        <div className="kpi-drawer__status-cell kpi-drawer__status-cell--prospect">
+          <small>Prospects</small>
+          <b className="mono">{prospectCount}</b>
+          <span className="mono">solo pipeline abierto</span>
+        </div>
+        <div className="kpi-drawer__status-cell kpi-drawer__status-cell--lost">
+          <small>Lost-only</small>
+          <b className="mono">{lostOnly}</b>
+          <span className="mono">todo perdido</span>
+        </div>
+      </div>
+
       <SectionLabel right={<span className="mono" style={{ color: "var(--fg-3)" }}>{cos.length} empresas</span>}>
         Empresas en cartera · ARR breakdown
       </SectionLabel>
 
       <div className="kpi-drawer__cartera">
-        {cos.map(([name, c]) => {
+        {cos.map(([name, c], idx) => {
           const lostOnlyRow = c.won === 0 && c.open === 0;
           const status = lostOnlyRow ? "lost" : c.won > 0 ? "customer" : "prospect";
-          const statusBg = status === "customer" ? "var(--success-soft)" : status === "prospect" ? "var(--accent-soft)" : "var(--bg-3)";
-          const statusColor = status === "customer" ? "var(--success)" : status === "prospect" ? "var(--accent)" : "var(--fg-3)";
+          const statusBg = status === "customer" ? "var(--success-soft)" : status === "prospect" ? "var(--accent-soft)" : "rgba(220, 38, 38, 0.10)";
+          const statusColor = status === "customer" ? "var(--success)" : status === "prospect" ? "var(--accent)" : "var(--danger)";
           const statusLabel = status === "customer" ? "Customer" : status === "prospect" ? "Prospect" : "Lost-only";
           return (
             <div key={name} className="kpi-drawer__cartera-row">
               <div className="kpi-drawer__cartera-head">
                 <div>
-                  <div className="kpi-drawer__row-name">{name}</div>
+                  <div className="kpi-drawer__row-name">
+                    <span className="kpi-drawer__num mono">{idx + 1}.</span>
+                    {name}
+                  </div>
                   <div className="kpi-drawer__row-sub mono">
                     {c.deals.length} deals · {c.open}A · {c.won}W · {c.lost}L
                   </div>
@@ -671,6 +698,70 @@ function CarteraDetail({ ws, currency }: { ws: Workspace; currency: Currency }) 
             </div>
           );
         })}
+      </div>
+    </>
+  );
+}
+
+/* ============================================================
+   OPORTUNIDADES VIGENTES (abiertas: sin won ni lost)
+   ============================================================ */
+function OpenDealsDetail({ ws, currency, onOpenDeal }: { ws: Workspace; currency: Currency; onOpenDeal: (id: string) => void }) {
+  const open = ws.deals.filter((d) => d.stage !== "won" && d.stage !== "lost");
+  const sorted = [...open].sort((a, b) => b.value - a.value);
+  const pipelineRaw = open.reduce((a, d) => a + d.value, 0);
+  const forecastW = open.reduce((a, d) => a + d.value * d.probability, 0);
+
+  // Distribución por etapa (solo etapas abiertas con al menos 1 trato)
+  const byStage = STAGES.filter((s) => s.id !== "won" && s.id !== "lost")
+    .map((s) => {
+      const ds = open.filter((d) => d.stage === s.id);
+      return { stage: s, count: ds.length, value: ds.reduce((a, d) => a + d.value, 0) };
+    })
+    .filter((r) => r.count > 0);
+
+  return (
+    <>
+      <Headline
+        label="Oportunidades vigentes"
+        value={<span className="mono">{open.length}</span>}
+        sub={
+          <>
+            <span className="mono">{fmtMoney(pipelineRaw, currency)}</span> en pipeline bruto · forecast ponderado{" "}
+            <span className="mono" style={{ color: "var(--accent)" }}>{fmtMoney(forecastW, currency)}</span>
+          </>
+        }
+      />
+      <Calc>
+        Tratos en etapas <b>abiertas</b> — cuenta los deals cuyo stage no es <b>won</b> ni <b>lost</b>.
+        Son las oportunidades activas, en curso de gestión (excluye ganadas y perdidas).
+      </Calc>
+      <SectionLabel right={<span className="mono" style={{ color: "var(--fg-3)" }}>{byStage.length} etapas</span>}>
+        Distribución por etapa
+      </SectionLabel>
+      <div className="kpi-drawer__list">
+        {byStage.map((r) => (
+          <div
+            key={r.stage.id}
+            style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", fontSize: 12.5 }}
+          >
+            <span className="dot" style={{ background: r.stage.color, width: 8, height: 8 }} />
+            <span>{r.stage.label}</span>
+            <span className="mono" style={{ marginLeft: "auto", color: "var(--fg-3)", fontSize: 11 }}>
+              {fmtMoney(r.value, currency)}
+            </span>
+            <span className="mono" style={{ minWidth: 26, textAlign: "right", fontWeight: 600 }}>{r.count}</span>
+          </div>
+        ))}
+      </div>
+      <SectionLabel right={<span className="mono" style={{ color: "var(--fg-3)" }}>{open.length} tratos</span>}>
+        Tratos vigentes · ordenados por valor
+      </SectionLabel>
+      <div className="kpi-drawer__list">
+        {sorted.map((d) => (
+          <DealRow key={d.id} deal={d} currency={currency} onOpenDeal={onOpenDeal} />
+        ))}
+        {open.length === 0 && <EmptyHint>No hay oportunidades vigentes en este workspace.</EmptyHint>}
       </div>
     </>
   );

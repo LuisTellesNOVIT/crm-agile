@@ -7,6 +7,8 @@ import { Card } from "../ui/Card";
 import { useActiveWorkspace, useAppStore, useAllCompanies, useCurrentUser } from "../../lib/store";
 import { fmtMoneyFull, daysFromToday } from "../../lib/format";
 import { templates } from "../../lib/mock/rich";
+import { tagColor } from "../../lib/tags";
+import { TagsEditor } from "../ui/TagsEditor";
 import type { ChannelKind, CompanyLite, Deal, OwnersByKey, Stage } from "../../lib/types";
 
 const TABS = [
@@ -82,6 +84,11 @@ export function DealDetail({ dealId, onClose }: { dealId: string; onClose: () =>
               )}
             />
             <div style={{ color: "var(--fg-3)", fontSize: "var(--fs-sm)" }}>{deal.company}</div>
+            {deal.tags.length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6 }}>
+                {deal.tags.map((t) => <TagChip key={t} tag={t} />)}
+              </div>
+            )}
           </div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
@@ -227,6 +234,22 @@ function DetailPane({
               renderDisplay={(v) => <span className="mono">{fmtMoneyFull(v, currency)}</span>}
             />
           } />
+          <FieldRow k="SaaS anual (ARR)" v={
+            deal.isRecurring ? (
+              deal.arr > 0 && deal.arr > deal.value ? (
+                <span
+                  className="deal-detail__high-saas"
+                  title={`Alto valor recurrente — el ARR anual (${fmtMoneyFull(deal.arr, currency)}) supera el setup (${fmtMoneyFull(deal.value, currency)})`}
+                >
+                  {fmtMoneyFull(deal.arr, currency)} / año
+                </span>
+              ) : (
+                <Chip tone="info">{fmtMoneyFull(deal.arr, currency)} / año</Chip>
+              )
+            ) : (
+              <span style={{ color: "var(--fg-3)" }}>No recurrente</span>
+            )
+          } />
           <FieldRow k="Probability" v={
             <InlineNumber
               dealId={deal.id}
@@ -319,12 +342,12 @@ function DetailPane({
               )}
             />
           } />
-          <FieldRow k="Recurrente" v={deal.isRecurring ? <Chip tone="info">Sí · {fmtMoneyFull(deal.arr, currency)} ARR</Chip> : <span style={{ color: "var(--fg-3)" }}>No</span>} />
           <FieldRow k="Source" v={
             <span style={{ color: deal.source ? "var(--fg)" : "var(--fg-4)" }} className="mono">
               {deal.source || "—"}
             </span>
           } />
+          <FieldRow k="Tags" v={<InlineTags dealId={deal.id} value={deal.tags} />} />
           <FieldRow k="Contactos" v={<span className="mono">{deal.contacts}</span>} />
         </Card.Body>
       </Card>
@@ -370,6 +393,35 @@ function FieldRow({ k, v }: { k: string; v: React.ReactNode }) {
     <div className="form-row">
       <div className="form-row__k">{k}</div>
       <div className="form-row__v">{v}</div>
+    </div>
+  );
+}
+
+/** Chip de tag con color determinístico (solo display). */
+function TagChip({ tag }: { tag: string }) {
+  const c = tagColor(tag);
+  return (
+    <span
+      className="tag-chip"
+      style={{ background: c.bg, color: c.fg, borderColor: c.border }}
+    >
+      {tag}
+    </span>
+  );
+}
+
+/**
+ * InlineTags — editor de tags inline en el detalle del trato.
+ * Usa TagsEditor; cada cambio (agregar/quitar) persiste vía /api/deal-update.
+ */
+function InlineTags({ dealId, value }: { dealId: string; value: string[] }) {
+  const { submit, busy } = useInlineSubmit();
+  return (
+    <div style={{ opacity: busy ? 0.6 : 1, width: "100%" }}>
+      <TagsEditor
+        value={value}
+        onChange={(tags) => submit(dealId, "tags", tags.join(","))}
+      />
     </div>
   );
 }
@@ -714,6 +766,9 @@ function DealEditModal({
   const [name, setName] = useState(deal.name);
   const [value, setValue] = useState(String(deal.value));
   const [closeAt, setCloseAt] = useState(new Date(deal.estimatedCloseAt).toISOString().slice(0, 10));
+  const toDateInput = (d?: string | null) => (d ? new Date(d).toISOString().slice(0, 10) : "");
+  const [projStart, setProjStart] = useState(toDateInput(deal.projectStartAt));
+  const [projEnd, setProjEnd] = useState(toDateInput(deal.projectEndAt));
   const [stage, setStage] = useState(deal.stage);
   const [probPct, setProbPct] = useState(Math.round(deal.probability * 100));
   const [ownerId, setOwnerId] = useState(deal.ownerId ?? "");
@@ -722,6 +777,7 @@ function DealEditModal({
   const [arr, setArr] = useState(String(deal.arr || 0));
   const [source, setSource] = useState(deal.source ?? "");
   const [ai, setAi] = useState(String(deal.ai));
+  const [tags, setTags] = useState<string[]>(deal.tags ?? []);
 
   // ── Grupo (workspace) — admin puede mover ──
   const currentCompany = allCompanies.find((c) => c.id === (deal.companyId ?? ""));
@@ -827,6 +883,9 @@ function DealEditModal({
       df.set("source", source);
       df.set("isRecurring", isRecurring ? "true" : "false");
       df.set("arr", arr);
+      df.set("tags", tags.join(","));
+      df.set("projectStartAt", projStart);
+      df.set("projectEndAt", projEnd);
       if (companyId) df.set("companyId", companyId);
       if (ownerId) df.set("ownerId", ownerId);
       if (group !== initialGroup) df.set("moveToWorkspace", group);
@@ -883,6 +942,31 @@ function DealEditModal({
               </label>
             </div>
 
+            {/* SaaS / recurrencia — contiguo al valor */}
+            <div className="deal-edit-modal__row">
+              <label className="deal-edit-modal__field deal-edit-modal__field--check" style={{ flex: 0 }}>
+                <input type="checkbox" checked={isRecurring} onChange={(e) => setIsRecurring(e.target.checked)} />
+                <span>SaaS recurrente</span>
+              </label>
+              <label className="deal-edit-modal__field" style={{ flex: 1 }}>
+                <span>ARR (anual)</span>
+                <input type="number" value={arr} onChange={(e) => setArr(e.target.value)} min={0} step="0.01" className="mono" disabled={!isRecurring} />
+                <small>MRR = ARR / 12. Se usa sólo si es recurrente.</small>
+              </label>
+            </div>
+
+            {/* Fechas de proyecto */}
+            <div className="deal-edit-modal__row">
+              <label className="deal-edit-modal__field" style={{ flex: 1 }}>
+                <span>Inicio de proyecto</span>
+                <input type="date" value={projStart} onChange={(e) => setProjStart(e.target.value)} />
+              </label>
+              <label className="deal-edit-modal__field" style={{ flex: 1 }}>
+                <span>Fin de proyecto</span>
+                <input type="date" value={projEnd} onChange={(e) => setProjEnd(e.target.value)} />
+              </label>
+            </div>
+
             <div className="deal-edit-modal__row">
               <label className="deal-edit-modal__field" style={{ flex: 1 }}>
                 <span>Stage</span>
@@ -904,6 +988,12 @@ function DealEditModal({
                 />
               </label>
             </div>
+
+            <label className="deal-edit-modal__field">
+              <span>Tags / palabras clave</span>
+              <TagsEditor value={tags} onChange={setTags} />
+              <small>Sector, tipo de lead, cliente… Enter o coma para agregar.</small>
+            </label>
           </div>
 
           {/* ─── Asignación: Grupo + Owner + Empresa ─── */}
@@ -946,7 +1036,7 @@ function DealEditModal({
             )}
           </div>
 
-          {/* ─── Empresa (SUNAT) — editable ─── */}
+          {/* ─── Empresa (SUNAT) — solo RUC, razón social e industria ─── */}
           <div className="deal-edit-modal__section">
             <h3>Empresa · datos SUNAT</h3>
             <div className="deal-edit-modal__row">
@@ -959,98 +1049,10 @@ function DealEditModal({
                 <input type="text" value={coRazon} onChange={(e) => setCoRazon(e.target.value)} />
               </label>
             </div>
-            <div className="deal-edit-modal__row">
-              <label className="deal-edit-modal__field" style={{ flex: 1 }}>
-                <span>Nombre comercial</span>
-                <input type="text" value={coComercial} onChange={(e) => setCoComercial(e.target.value)} />
-              </label>
-              <label className="deal-edit-modal__field" style={{ flex: 1 }}>
-                <span>Industria / Sector</span>
-                <input type="text" value={coIndustry} onChange={(e) => setCoIndustry(e.target.value)} placeholder="Seguros, Banca…" />
-              </label>
-            </div>
-            <div className="deal-edit-modal__row">
-              <label className="deal-edit-modal__field" style={{ flex: 1 }}>
-                <span>Estado</span>
-                <select value={coEstado} onChange={(e) => setCoEstado(e.target.value)}>
-                  <option value="">—</option>
-                  {SUNAT_ESTADO.map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </label>
-              <label className="deal-edit-modal__field" style={{ flex: 1 }}>
-                <span>Condición</span>
-                <select value={coCondicion} onChange={(e) => setCoCondicion(e.target.value)}>
-                  <option value="">—</option>
-                  {SUNAT_CONDICION.map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </label>
-              <label className="deal-edit-modal__field" style={{ flex: 1 }}>
-                <span>Tipo contribuyente</span>
-                <input type="text" value={coTipo} onChange={(e) => setCoTipo(e.target.value)} placeholder="S.A.C., E.I.R.L…" />
-              </label>
-            </div>
             <label className="deal-edit-modal__field">
-              <span>Domicilio fiscal</span>
-              <input type="text" value={coDireccion} onChange={(e) => setCoDireccion(e.target.value)} />
+              <span>Industria / Sector</span>
+              <input type="text" value={coIndustry} onChange={(e) => setCoIndustry(e.target.value)} placeholder="Seguros, Banca, Salud…" />
             </label>
-            <div className="deal-edit-modal__row">
-              <label className="deal-edit-modal__field" style={{ flex: 1 }}>
-                <span>Distrito</span>
-                <input type="text" value={coDistrito} onChange={(e) => setCoDistrito(e.target.value)} />
-              </label>
-              <label className="deal-edit-modal__field" style={{ flex: 1 }}>
-                <span>Provincia</span>
-                <input type="text" value={coProvincia} onChange={(e) => setCoProvincia(e.target.value)} />
-              </label>
-              <label className="deal-edit-modal__field" style={{ flex: 1 }}>
-                <span>Departamento</span>
-                <input type="text" value={coDepartamento} onChange={(e) => setCoDepartamento(e.target.value)} />
-              </label>
-              <label className="deal-edit-modal__field" style={{ flex: 1 }}>
-                <span>Ubigeo</span>
-                <input type="text" value={coUbigeo} onChange={(e) => setCoUbigeo(e.target.value.replace(/\D/g, "").slice(0, 6))} maxLength={6} className="mono" />
-              </label>
-            </div>
-            <div className="deal-edit-modal__row">
-              <label className="deal-edit-modal__field" style={{ flex: 2 }}>
-                <span>Representante legal</span>
-                <input type="text" value={coRepLegal} onChange={(e) => setCoRepLegal(e.target.value)} />
-              </label>
-              <label className="deal-edit-modal__field" style={{ flex: 1 }}>
-                <span>DNI</span>
-                <input type="text" value={coRepDni} onChange={(e) => setCoRepDni(e.target.value.replace(/\D/g, "").slice(0, 8))} maxLength={8} className="mono" />
-              </label>
-              <label className="deal-edit-modal__field" style={{ flex: 1 }}>
-                <span>Cargo</span>
-                <input type="text" value={coRepCargo} onChange={(e) => setCoRepCargo(e.target.value)} />
-              </label>
-            </div>
-            <div className="deal-edit-modal__row">
-              <label className="deal-edit-modal__field" style={{ flex: 1 }}>
-                <span>Teléfono</span>
-                <input type="text" value={coTelefono} onChange={(e) => setCoTelefono(e.target.value)} className="mono" />
-              </label>
-              <label className="deal-edit-modal__field" style={{ flex: 1 }}>
-                <span>Email</span>
-                <input type="email" value={coEmail} onChange={(e) => setCoEmail(e.target.value)} />
-              </label>
-            </div>
-          </div>
-
-          {/* ─── SaaS / recurrencia ─── */}
-          <div className="deal-edit-modal__section">
-            <h3>SaaS / recurrencia</h3>
-            <div className="deal-edit-modal__row">
-              <label className="deal-edit-modal__field deal-edit-modal__field--check" style={{ flex: 0 }}>
-                <input type="checkbox" checked={isRecurring} onChange={(e) => setIsRecurring(e.target.checked)} />
-                <span>Contrato recurrente</span>
-              </label>
-              <label className="deal-edit-modal__field" style={{ flex: 1 }}>
-                <span>ARR (anual)</span>
-                <input type="number" value={arr} onChange={(e) => setArr(e.target.value)} min={0} step="0.01" className="mono" />
-                <small>MRR se calcula como ARR / 12 al guardar.</small>
-              </label>
-            </div>
           </div>
 
           {/* ─── Avanzado ─── */}

@@ -3,6 +3,7 @@ import { useFetcher } from "react-router";
 import { Icon } from "../shell/Icon";
 import { Chip } from "../ui/Chip";
 import { useActiveWorkspace, useCurrentUser } from "../../lib/store";
+import { TagsEditor } from "../ui/TagsEditor";
 
 /**
  * NewLeadDrawer — formulario de un solo paso para crear un lead completo
@@ -50,6 +51,7 @@ export function NewLeadDrawer({ onClose }: { onClose: () => void }) {
   const currentUser = useCurrentUser();
   const fetcher = useFetcher<ActionResult>();
   const [form, setForm] = useState<FormState>(INITIAL);
+  const [tags, setTags] = useState<string[]>([]);
   const update = (patch: Partial<FormState>) => setForm((f) => ({ ...f, ...patch }));
 
   const busy = fetcher.state !== "idle";
@@ -70,6 +72,7 @@ export function NewLeadDrawer({ onClose }: { onClose: () => void }) {
     if (result?.ok) {
       const t = window.setTimeout(() => {
         setForm(INITIAL);
+        setTags([]);
         onClose();
       }, 1500);
       return () => window.clearTimeout(t);
@@ -96,6 +99,7 @@ export function NewLeadDrawer({ onClose }: { onClose: () => void }) {
         estimatedValue: form.estimatedValue || "0",
         stage: form.stage || defaultStage,
         dealName: form.dealName,
+        tags: tags.join(","),
       },
       { method: "POST", action: "/api/lead-create" },
     );
@@ -284,6 +288,12 @@ export function NewLeadDrawer({ onClose }: { onClose: () => void }) {
                   <option value="event">Evento</option>
                   <option value="other">Otro</option>
                 </select>
+              </label>
+
+              <label className="lead-form__field">
+                <span>Tags / palabras clave</span>
+                <TagsEditor value={tags} onChange={setTags} />
+                <small>Sector, tipo de lead, cliente… Enter o coma para agregar.</small>
               </label>
             </div>
 
