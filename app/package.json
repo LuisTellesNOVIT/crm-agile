@@ -11,13 +11,16 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
-    "db:reset": "prisma migrate reset"
+    "db:reset": "prisma migrate reset",
+    "brief": "tsx scripts/daily-brief.ts",
+    "brief:send": "tsx scripts/daily-brief.ts --send"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
+    "@napi-rs/canvas": "^1.0.0",
     "@prisma/client": "^6.19.3",
     "@react-router/node": "7.15.1",
     "@react-router/serve": "7.15.1",

@@ -268,6 +268,7 @@ function TimelineChart({
   onOpenDeal: (id: string) => void;
   view?: "band" | "gantt";
 }) {
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const startMonth = new Date(today.getFullYear(), today.getMonth(), 1);
   const months = Array.from(
     { length: horizon },
@@ -306,7 +307,7 @@ function TimelineChart({
   const visible = windowed.slice(0, 14);
   const hidden = Math.max(0, windowed.length - visible.length);
 
-  const saasH = 96;
+  const saasH = 176;
   const monthIdxOf = (d: Date) =>
     (d.getFullYear() - startMonth.getFullYear()) * 12 + (d.getMonth() - startMonth.getMonth());
 
@@ -403,14 +404,83 @@ function TimelineChart({
 
         {/* Dos líneas acumuladas: SETUP (violeta, repartido en el proyecto)
             + SaaS (azul, post-proyecto). */}
-        <div style={{ position: "absolute", left: 12, right: 58, bottom: 14, top: 30 }}>
+        <div
+          style={{
+            position: "absolute",
+            left: 12,
+            right: 58,
+            bottom: 14,
+            top: 30,
+            // líneas verticales (una por mes)
+            backgroundImage: `repeating-linear-gradient(to right, transparent, transparent calc(100% / ${horizon} - 1px), var(--border-2) calc(100% / ${horizon} - 1px), var(--border-2) calc(100% / ${horizon}))`,
+          }}
+        >
           <svg viewBox={`0 0 100 ${saasH}`} preserveAspectRatio="none" style={{ width: "100%", height: "100%", overflow: "visible" }}>
             <path d={`${setupLine} L100,${saasH} L0,${saasH} Z`} fill={SETUP_COLOR} opacity="0.07" />
             <path d={`${saasLine} L100,${saasH} L0,${saasH} Z`} fill={SAAS_COLOR} opacity="0.07" />
             <path d={setupLine} fill="none" stroke={SETUP_COLOR} strokeWidth="1.8" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
             <path d={saasLine} fill="none" stroke={SAAS_COLOR} strokeWidth="1.8" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
           </svg>
+          {hoverIdx !== null && (
+            <>
+              <div style={{ position: "absolute", top: 0, bottom: 0, left: `${(hoverIdx / Math.max(1, horizon - 1)) * 100}%`, width: 1, background: "var(--fg-3)", opacity: 0.55 }} />
+              <span style={{ position: "absolute", left: `${(hoverIdx / Math.max(1, horizon - 1)) * 100}%`, top: `${(1 - setupSeries[hoverIdx] / maxBilling) * 100}%`, width: 9, height: 9, borderRadius: "50%", background: SETUP_COLOR, border: "2px solid var(--bg)", transform: "translate(-50%,-50%)", boxShadow: "0 0 0 1px " + SETUP_COLOR }} />
+              <span style={{ position: "absolute", left: `${(hoverIdx / Math.max(1, horizon - 1)) * 100}%`, top: `${(1 - saasSeries[hoverIdx] / maxBilling) * 100}%`, width: 9, height: 9, borderRadius: "50%", background: SAAS_COLOR, border: "2px solid var(--bg)", transform: "translate(-50%,-50%)", boxShadow: "0 0 0 1px " + SAAS_COLOR }} />
+            </>
+          )}
+          <div
+            style={{ position: "absolute", inset: 0, cursor: "crosshair" }}
+            onMouseMove={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              const rel = (e.clientX - r.left) / r.width;
+              setHoverIdx(Math.max(0, Math.min(horizon - 1, Math.round(rel * (horizon - 1)))));
+            }}
+            onMouseLeave={() => setHoverIdx(null)}
+          />
         </div>
+
+        {/* Tooltip de la línea — detalle del mes bajo el cursor */}
+        {hoverIdx !== null && months[hoverIdx] && (
+          <div
+            style={{
+              position: "absolute",
+              top: 32,
+              left: `calc(12px + (100% - 70px) * ${hoverIdx / Math.max(1, horizon - 1)})`,
+              transform: hoverIdx > horizon * 0.6 ? "translateX(-100%) translateX(-12px)" : "translateX(12px)",
+              zIndex: 6,
+              background: "var(--bg)",
+              border: "1px solid var(--border)",
+              borderRadius: 7,
+              padding: "8px 10px",
+              boxShadow: "var(--shadow-2)",
+              pointerEvents: "none",
+              minWidth: 138,
+            }}
+          >
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--fg-3)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+              {MONTH_LONG_ES[months[hoverIdx].getMonth()]} '{months[hoverIdx].getFullYear() % 100} · mes {hoverIdx + 1}/{horizon}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, fontSize: 12 }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 5, color: SETUP_COLOR }}>
+                <span style={{ width: 8, height: 8, borderRadius: 2, background: SETUP_COLOR }} /> Setup
+              </span>
+              <b className="mono" style={{ color: "var(--fg)" }}>{fmtMoney(setupSeries[hoverIdx], currency)}</b>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, fontSize: 12, marginTop: 4 }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 5, color: SAAS_COLOR }}>
+                <span style={{ width: 8, height: 8, borderRadius: 2, background: SAAS_COLOR }} /> SaaS
+              </span>
+              <b className="mono" style={{ color: "var(--fg)" }}>{fmtMoney(saasSeries[hoverIdx], currency)}</b>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, fontSize: 12, marginTop: 6, paddingTop: 6, borderTop: "1px solid var(--border-2)" }}>
+              <span style={{ color: "var(--fg-2)" }}>Total acum.</span>
+              <b className="mono" style={{ color: "var(--info)" }}>{fmtMoney(billingSeries[hoverIdx], currency)}</b>
+            </div>
+            <div style={{ fontSize: 10.5, color: "var(--fg-4)", marginTop: 5 }}>
+              {billingSeries[horizon - 1] > 0 ? Math.round((billingSeries[hoverIdx] / billingSeries[horizon - 1]) * 100) : 0}% del acumulado al mes {horizon}
+            </div>
+          </div>
+        )}
 
         {/* Escala numérica (eje Y) de lo que se cobrará */}
         <div
@@ -436,12 +506,16 @@ function TimelineChart({
           }}
         />
 
-        {/* eje X: mes inicial → mes final */}
-        <div style={{ position: "absolute", left: 12, bottom: 2, fontFamily: "var(--font-mono)", fontSize: 8.5, color: "var(--fg-4)" }}>
-          {MONTH_SHORT_ES[months[0]?.getMonth() ?? 0]}'{months[0]?.getFullYear() % 100}
-        </div>
-        <div style={{ position: "absolute", right: 58, bottom: 2, fontFamily: "var(--font-mono)", fontSize: 8.5, color: "var(--fg-4)" }}>
-          {MONTH_SHORT_ES[months[horizon - 1]?.getMonth() ?? 0]}'{months[horizon - 1]?.getFullYear() % 100}
+        {/* eje X: nombre del mes (una etiqueta por mes; cada 3 si el horizonte es largo) */}
+        <div style={{ position: "absolute", left: 12, right: 58, bottom: 1, display: "flex", fontFamily: "var(--font-mono)", fontSize: 8, color: "var(--fg-4)" }}>
+          {months.map((m, i) => {
+            const show = horizon <= 12 || i % 3 === 0;
+            return (
+              <div key={i} style={{ flex: 1, textAlign: "center", overflow: "hidden", whiteSpace: "nowrap" }}>
+                {show ? `${MONTH_LONG_ES[m.getMonth()]}${horizon > 12 ? " '" + (m.getFullYear() % 100) : ""}` : ""}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

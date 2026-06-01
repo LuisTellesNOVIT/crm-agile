@@ -4566,6 +4566,81 @@ a.nav-item.is-active { color: var(--fg); }
   display: grid; grid-template-columns: 110px 1fr 60px; align-items: center; gap: 10px;
   font-size: var(--fs-sm);
 }
+/* fila como botón (click → sustento de la etapa) */
+.stage-funnel__row--clickable {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 3px 5px;
+  margin: 0 -5px;
+  cursor: pointer;
+  font-family: inherit;
+  color: inherit;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.stage-funnel__row--clickable:hover {
+  background: var(--bg-2);
+  border-color: var(--border-2);
+}
+.stage-pie__legend-row--clickable:hover { background: var(--bg-2); }
+
+/* Embudo por etapa — trapecios centrados conectados (silueta de funnel) */
+.funnel { display: flex; flex-direction: column; }
+.funnel__row {
+  display: grid;
+  grid-template-columns: 96px 1fr 40px;
+  align-items: stretch;
+  gap: 10px;
+}
+.funnel__row--clickable { cursor: pointer; }
+.funnel__label {
+  font-size: var(--fs-sm);
+  color: var(--fg-2);
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.funnel__band { position: relative; height: 46px; }
+.funnel__shape {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  left: 0;
+  right: 0;
+  transition: filter 0.12s ease;
+}
+.funnel__row--clickable:hover .funnel__shape { filter: brightness(1.07); }
+.funnel__val {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  pointer-events: none;
+}
+.funnel__val--in {
+  left: 0;
+  right: 0;
+  justify-content: center;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+.funnel__val--out { color: var(--fg-2); margin-left: 8px; white-space: nowrap; }
+.funnel__pct {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-3);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
 .stage-funnel__bar { height: 18px; background: var(--bg-3); border-radius: 4px; overflow: hidden; position: relative; }
 .stage-funnel__bar > div { height: 100%; background: var(--accent); }
 .stage-funnel__val { font-family: var(--font-mono); font-size: var(--fs-xs); text-align: right; }
@@ -4757,6 +4832,14 @@ a.nav-item.is-active { color: var(--fg); }
   border-left: 3px solid var(--ws-c);
   border-radius: var(--radius);
 }
+.ws-compare__legend-row--clickable {
+  cursor: pointer;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease, transform 0.06s ease;
+}
+.ws-compare__legend-row--clickable:hover {
+  box-shadow: 0 0 0 1px var(--ws-c) inset, var(--shadow-1);
+}
+.ws-compare__legend-row--clickable:active { transform: translateY(0.5px); }
 .ws-compare__legend-row b {
   font-size: 13px;
   font-weight: 600;
@@ -5475,21 +5558,21 @@ textarea.emp__input { resize: vertical; }
 }
 .fc-summary {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 12px 0;
-  margin-top: 18px;
-  padding-top: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 16px 0;
+  margin-top: 22px;
+  padding-top: 18px;
   border-top: 1px solid var(--border-2);
 }
 .fc-summary > div {
-  padding: 0 12px;
+  padding: 2px 16px;
   border-right: 1px solid var(--border-2);
 }
 .fc-summary > div:last-child { border-right: none; }
 /* Las métricas SaaS (ARR run-rate + acumulado) se diferencian con el tono info */
 .fc-summary__saas small { color: var(--info); opacity: 0.85; }
 .fc-summary small {
-  font-size: 10px;
+  font-size: 11.5px;
   font-family: var(--font-mono);
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -5498,10 +5581,10 @@ textarea.emp__input { resize: vertical; }
 .fc-summary b {
   display: block;
   font-family: var(--font-mono);
-  font-size: 17px;
+  font-size: 24px;
   font-weight: 500;
   letter-spacing: -0.01em;
-  margin-top: 4px;
+  margin-top: 6px;
   color: var(--fg);
 }
 .tl-event__text { font-size: var(--fs-sm); color: var(--fg); line-height: 1.4; }

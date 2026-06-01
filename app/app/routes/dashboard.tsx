@@ -83,6 +83,7 @@ function Kpi({
   spark,
   sparkColor = "var(--accent)",
   sparkInvert = false,
+  valueColor,
   onClick,
 }: {
   label: string;
@@ -93,6 +94,7 @@ function Kpi({
   spark: number[];
   sparkColor?: string;
   sparkInvert?: boolean;
+  valueColor?: string;
   onClick?: () => void;
 }) {
   return (
@@ -109,7 +111,7 @@ function Kpi({
           style={{ marginLeft: "auto", color: "var(--fg-4)" }}
         />
       </div>
-      <div className="kpi__value">{value}</div>
+      <div className="kpi__value" style={valueColor ? { color: valueColor } : undefined}>{value}</div>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span className={`kpi__delta kpi__delta--${deltaDir}`}>
           <Icon name={deltaDir === "up" ? "arrow-up" : "arrow-down"} size={11} />
@@ -143,7 +145,7 @@ function trend(end: number, count: number, salt: number, mode: "up" | "noisy" = 
 /* ============================================================
    Leaderboard donut pie
    ============================================================ */
-type OwnerRow = { k: string; name: string; role: string; color: string; won: number; deals: number };
+type OwnerRow = { k: string; name: string; role: string; color: string; won: number; deals: number; wonCount: number };
 
 function LeaderboardPie({ data }: { data: OwnerRow[] }) {
   const total = data.reduce((a, o) => a + o.won, 0);
@@ -200,6 +202,686 @@ function LeaderboardPie({ data }: { data: OwnerRow[] }) {
       <div className="leaderboard-pie__center">
         <span className="leaderboard-pie__label mono">CERRADO</span>
         <span className="leaderboard-pie__total mono">{fmtMoney(total, "USD")}</span>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   StagePieCard — donut de distribución del pipeline bruto por etapa
+   ============================================================ */
+function StagePieCard({
+  funnel,
+  currency,
+  onSlice,
+}: {
+  funnel: { id: string; label: string; color: string; totalValue: number }[];
+  currency: Currency;
+  onSlice?: (id: string) => void;
+}) {
+  const data = funnel.filter((f) => f.totalValue > 0);
+  const total = data.reduce((a, f) => a + f.totalValue, 0);
+  const size = 132;
+  const cx = size / 2;
+  const cy = size / 2;
+  const rO = 58;
+  const rI = 36;
+  let cum = 0;
+  const slices = data.map((f) => {
+    const v = total ? f.totalValue / total : 0;
+    const s = cum;
+    cum += v;
+    const e = cum;
+    const sa = s * Math.PI * 2 - Math.PI / 2;
+    const ea = e * Math.PI * 2 - Math.PI / 2;
+    const x1o = cx + rO * Math.cos(sa);
+    const y1o = cy + rO * Math.sin(sa);
+    const x2o = cx + rO * Math.cos(ea);
+    const y2o = cy + rO * Math.sin(ea);
+    const x1i = cx + rI * Math.cos(ea);
+    const y1i = cy + rI * Math.sin(ea);
+    const x2i = cx + rI * Math.cos(sa);
+    const y2i = cy + rI * Math.sin(sa);
+    const large = v > 0.5 ? 1 : 0;
+    const d = `M ${x1o} ${y1o} A ${rO} ${rO} 0 ${large} 1 ${x2o} ${y2o} L ${x1i} ${y1i} A ${rI} ${rI} 0 ${large} 0 ${x2i} ${y2i} Z`;
+    return { d, color: f.color, key: f.id, label: f.label, value: f.totalValue, pct: v * 100 };
+  });
+
+  return (
+    <div className="card">
+      <div className="card__h">
+        <Icon name="dollar" size={14} style={{ color: "var(--accent)" }} />
+        <span style={{ fontWeight: 600 }}>Distribución por etapa</span>
+        <span className="card__sub">{fmtMoney(total, currency)} total</span>
+      </div>
+      <div className="card__b">
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
+            <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+              {slices.map((s) => (
+                <path
+                  key={s.key}
+                  d={s.d}
+                  fill={s.color}
+                  stroke="var(--bg)"
+                  strokeWidth={1.5}
+                  style={onSlice ? { cursor: "pointer" } : undefined}
+                  onClick={onSlice ? () => onSlice(s.key) : undefined}
+                >
+                  <title>{`${s.label} · ${fmtMoney(s.value, currency)}`}</title>
+                </path>
+              ))}
+            </svg>
+            <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+              <span style={{ fontSize: 9, color: "var(--fg-4)", fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".1em" }}>Pipeline</span>
+              <span style={{ fontSize: 14, fontWeight: 600, fontFamily: "var(--font-mono)" }}>{fmtMoney(total, currency)}</span>
+            </div>
+          </div>
+          <ul style={{ listStyle: "none", margin: 0, padding: 0, flex: 1, display: "flex", flexDirection: "column", gap: 7 }}>
+            {slices.map((s) => (
+              <li
+                key={s.key}
+                onClick={onSlice ? () => onSlice(s.key) : undefined}
+                title={onSlice ? `Ver oportunidades en ${s.label}` : undefined}
+                className={onSlice ? "stage-pie__legend-row--clickable" : undefined}
+                style={{ display: "grid", gridTemplateColumns: "10px 1fr auto auto", alignItems: "center", gap: 8, fontSize: 12, cursor: onSlice ? "pointer" : undefined, padding: "2px 4px", borderRadius: 4 }}
+              >
+                <span style={{ width: 10, height: 10, borderRadius: 3, background: s.color }} />
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--fg-2)" }}>{s.label}</span>
+                <span className="mono" style={{ fontWeight: 600, color: "var(--fg)" }}>{fmtMoney(s.value, currency)}</span>
+                <span className="mono" style={{ fontSize: 11, color: "var(--fg-3)", minWidth: 34, textAlign: "right" }}>{s.pct.toFixed(0)}%</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   TopClientsPieCard — Top 5 clientes (resto en "Otros") como PIE.
+   Suma tratos GANADOS + EN PROCESO por cliente (excluye perdidos).
+   ============================================================ */
+function TopClientsPieCard({
+  deals,
+  currency,
+  onClient,
+}: {
+  deals: Deal[];
+  currency: Currency;
+  onClient?: (key: string) => void; // nombre de empresa, o "__otros__"
+}) {
+  const byClient = new Map<string, { value: number; count: number }>();
+  deals.forEach((d) => {
+    if (d.stage === "lost") return; // sin perdidos
+    const cur = byClient.get(d.company) ?? { value: 0, count: 0 };
+    cur.value += d.value;
+    cur.count += 1;
+    byClient.set(d.company, cur);
+  });
+  const sorted = [...byClient.entries()]
+    .map(([name, v]) => ({ name, ...v }))
+    .sort((a, b) => b.value - a.value);
+  const top = sorted.slice(0, 5);
+  const rest = sorted.slice(5);
+  const otrosVal = rest.reduce((a, c) => a + c.value, 0);
+  const otrosCount = rest.reduce((a, c) => a + c.count, 0);
+
+  const PALETTE = ["#4f46e5", "#0ea5e9", "#7c3aed", "#f59e0b", "#10b981", "#94a3b8"];
+  type Seg = { key: string; label: string; value: number; count: number; color: string };
+  const segs: Seg[] = top.map((c, i) => ({ key: c.name, label: c.name, value: c.value, count: c.count, color: PALETTE[i] }));
+  if (otrosVal > 0) segs.push({ key: "__otros__", label: `Otros (${rest.length})`, value: otrosVal, count: otrosCount, color: PALETTE[5] });
+
+  const total = segs.reduce((a, s) => a + s.value, 0);
+  const clientCount = byClient.size;
+  const size = 168, cx = size / 2, cy = size / 2, rO = 74, rI = 48;
+  const arc = (s: number, e: number) => {
+    const sa = s * Math.PI * 2 - Math.PI / 2;
+    const ea = e * Math.PI * 2 - Math.PI / 2;
+    const x1o = cx + rO * Math.cos(sa), y1o = cy + rO * Math.sin(sa);
+    const x2o = cx + rO * Math.cos(ea), y2o = cy + rO * Math.sin(ea);
+    const x1i = cx + rI * Math.cos(ea), y1i = cy + rI * Math.sin(ea);
+    const x2i = cx + rI * Math.cos(sa), y2i = cy + rI * Math.sin(sa);
+    const large = e - s > 0.5 ? 1 : 0;
+    return `M ${x1o} ${y1o} A ${rO} ${rO} 0 ${large} 1 ${x2o} ${y2o} L ${x1i} ${y1i} A ${rI} ${rI} 0 ${large} 0 ${x2i} ${y2i} Z`;
+  };
+  let cum = 0;
+  const slices = segs
+    .filter((s) => s.value > 0)
+    .map((s) => {
+      const v = total ? s.value / total : 0;
+      const d = arc(cum, cum + v);
+      cum += v;
+      return { d, color: s.color, key: s.key };
+    });
+
+  return (
+    <div className="card">
+      <div className="card__h">
+        <Icon name="users" size={14} style={{ color: "var(--accent)" }} />
+        <span style={{ fontWeight: 600 }}>Top 5 clientes</span>
+        <span className="card__sub" style={{ display: "inline-flex", alignItems: "baseline", gap: 6 }}>
+          <b className="mono" style={{ color: "var(--fg)", fontWeight: 600, fontSize: 13 }}>{fmtMoney(total, currency)}</b>
+          <span>· {clientCount} clientes · ganados + en proceso</span>
+        </span>
+      </div>
+      <div className="card__b">
+        <div className="ws-compare__layout" style={{ gridTemplateColumns: `${size + 12}px 1fr`, gap: 18 }}>
+          <div className="ws-compare__donut" style={{ width: size, height: size }}>
+            <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+              {total > 0 ? (
+                slices.map((s) => (
+                  <path
+                    key={s.key}
+                    d={s.d}
+                    fill={s.color}
+                    stroke="var(--bg)"
+                    strokeWidth={2}
+                    style={onClient ? { cursor: "pointer" } : undefined}
+                    onClick={onClient ? () => onClient(s.key) : undefined}
+                  />
+                ))
+              ) : (
+                <circle cx={cx} cy={cy} r={(rO + rI) / 2} fill="none" stroke="var(--bg-3)" strokeWidth={rO - rI} />
+              )}
+            </svg>
+            <div className="ws-compare__center">
+              <span className="ws-compare__total-lbl">Clientes</span>
+              <span className="ws-compare__total">{fmtMoney(total, currency)}</span>
+              <span className="ws-compare__total-sub">{clientCount} {clientCount === 1 ? "cliente" : "clientes"}</span>
+            </div>
+          </div>
+          <div className="ws-compare__legend">
+            {segs.map((s) => {
+              const pct = total ? (s.value / total) * 100 : 0;
+              const clickable = !!onClient;
+              return (
+                <div
+                  key={s.key}
+                  className={`ws-compare__legend-row${clickable ? " ws-compare__legend-row--clickable" : ""}`}
+                  style={{ "--ws-c": s.color } as React.CSSProperties}
+                  onClick={clickable ? () => onClient(s.key) : undefined}
+                  title={clickable ? `Ver tratos de ${s.label}` : undefined}
+                >
+                  <span className="ws-compare__dot" />
+                  <div>
+                    <b>{s.label}</b>
+                    <span className="mono">{Math.round(pct)}% · {s.count} {s.count === 1 ? "trato" : "tratos"}</span>
+                  </div>
+                  <span className="ws-compare__legend-val">{fmtMoney(s.value, currency)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   StageFunnelCard — embudo con el VALOR por etapa (barras centradas).
+   ============================================================ */
+function StageFunnelCard({
+  funnel,
+  currency,
+  onStage,
+}: {
+  funnel: { id: string; label: string; color: string; totalValue: number; count: number }[];
+  currency: Currency;
+  onStage?: (id: string) => void;
+}) {
+  const data = funnel.filter((f) => f.totalValue > 0);
+  const max = Math.max(...data.map((f) => f.totalValue), 1);
+  const total = data.reduce((a, f) => a + f.totalValue, 0);
+  const N = data.length;
+  const w = (v: number) => Math.max((v / max) * 100, 7); // ancho % (mín 7 para visibilidad)
+  return (
+    <div className="card">
+      <div className="card__h">
+        <Icon name="trending" size={14} style={{ color: "var(--accent)" }} />
+        <span style={{ fontWeight: 600 }}>Embudo por etapa</span>
+        <span className="card__sub">valor por etapa · {fmtMoney(total, currency)}</span>
+      </div>
+      <div className="card__b">
+        <div className="funnel">
+          {data.map((s, i) => {
+            // Trapecio: ancho superior = valor de esta etapa; ancho inferior =
+            // valor de la siguiente (se conectan formando el embudo continuo).
+            const topW = w(s.totalValue);
+            const botW = i < N - 1 ? w(data[i + 1].totalValue) : topW * 0.5;
+            const clip = `polygon(${(50 - topW / 2).toFixed(2)}% 0%, ${(50 + topW / 2).toFixed(2)}% 0%, ${(50 + botW / 2).toFixed(2)}% 100%, ${(50 - botW / 2).toFixed(2)}% 100%)`;
+            const pct = total ? (s.totalValue / total) * 100 : 0;
+            const wide = Math.max(topW, botW) >= 26;
+            const clickable = !!onStage;
+            return (
+              <div
+                key={s.id}
+                className={`funnel__row${clickable ? " funnel__row--clickable" : ""}`}
+                onClick={clickable ? () => onStage(s.id) : undefined}
+                title={clickable ? `Ver ${s.count} oportunidad(es) en ${s.label}` : undefined}
+              >
+                <div className="funnel__label">{s.label}</div>
+                <div className="funnel__band">
+                  <div className="funnel__shape" style={{ background: s.color, clipPath: clip, WebkitClipPath: clip }} />
+                  {wide ? (
+                    <span className="funnel__val funnel__val--in">{fmtMoney(s.totalValue, currency)}</span>
+                  ) : (
+                    <span className="funnel__val funnel__val--out" style={{ left: `${(50 + Math.max(topW, botW) / 2).toFixed(2)}%` }}>
+                      {fmtMoney(s.totalValue, currency)}
+                    </span>
+                  )}
+                </div>
+                <div className="funnel__pct">{pct.toFixed(0)}%</div>
+              </div>
+            );
+          })}
+          {data.length === 0 && (
+            <div style={{ padding: 16, textAlign: "center", color: "var(--fg-3)", fontSize: 13 }}>Sin pipeline</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   LostClientDrawer — sustento del KPI "Cliente top perdido":
+   lista las oportunidades PERDIDAS del cliente; total cuadra.
+   ============================================================ */
+function LostClientDrawer({
+  clientName,
+  ws,
+  currency,
+  onClose,
+  onOpenDeal,
+}: {
+  clientName: string | null;
+  ws: { stages: { id: string; label: string; color: string }[]; deals: Deal[] };
+  currency: Currency;
+  onClose: () => void;
+  onOpenDeal: (id: string) => void;
+}) {
+  if (!clientName) return null;
+  const deals = ws.deals.filter((d) => d.stage === "lost" && d.company === clientName).sort((a, b) => b.value - a.value);
+  const total = deals.reduce((a, d) => a + d.value, 0);
+  return (
+    <div className="drawer-backdrop" onClick={onClose}>
+      <aside className="ai-drawer kpi-drawer" style={{ width: "min(560px, 100vw)" }} onClick={(e) => e.stopPropagation()}>
+        <header className="ai-drawer__head" style={{ padding: "0 14px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ width: 28, height: 28, borderRadius: 6, background: "var(--danger)", color: "#fff", display: "grid", placeItems: "center" }}>
+              <Icon name="alert" size={14} />
+            </span>
+            <div>
+              <div style={{ fontWeight: 600 }}>{clientName}</div>
+              <div style={{ fontSize: 10, color: "var(--fg-3)", fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                Oportunidades perdidas · sustento
+              </div>
+            </div>
+          </div>
+          <button type="button" className="btn btn--icon" onClick={onClose} aria-label="Cerrar"><Icon name="x" size={14} /></button>
+        </header>
+
+        <div className="ai-drawer__msgs" style={{ gap: 12, padding: 14 }}>
+          <div className="kpi-drawer__headline">
+            <div className="kpi-drawer__head-label">Valor perdido</div>
+            <div className="kpi-drawer__head-value" style={{ color: "var(--danger)" }}>{fmtMoney(total, currency)}</div>
+            <div className="kpi-drawer__head-sub">{deals.length} oportunidad(es) perdida(s) · suma exacta de los valores listados</div>
+          </div>
+          <div className="kpi-drawer__list">
+            {deals.map((d) => (
+              <div key={d.id} className="kpi-drawer__row" onClick={() => onOpenDeal(d.id)}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="kpi-drawer__row-name">{d.name}</div>
+                  <div className="kpi-drawer__row-sub"><span className="mono">{d.id}</span> · {d.company}</div>
+                </div>
+                <span className="mono kpi-drawer__row-value" style={{ color: "var(--danger)" }}>{fmtMoney(d.value, currency)}</span>
+              </div>
+            ))}
+            {deals.length === 0 && <div style={{ padding: 16, textAlign: "center", color: "var(--fg-3)", fontSize: 13 }}>Sin pérdidas</div>}
+          </div>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+/* ============================================================
+   ClientDealsDrawer — sustento del Top 5 clientes / "Otros".
+   Lista los tratos (ganados + en proceso) del cliente; total cuadra.
+   ============================================================ */
+function ClientDealsDrawer({
+  clientKey,
+  ws,
+  currency,
+  onClose,
+  onOpenDeal,
+}: {
+  clientKey: string | null;
+  ws: { stages: { id: string; label: string; color: string }[]; deals: Deal[] };
+  currency: Currency;
+  onClose: () => void;
+  onOpenDeal: (id: string) => void;
+}) {
+  if (!clientKey) return null;
+  const stageLabel = (id: string) => ws.stages.find((s) => s.id === id)?.label ?? id;
+  const stageColor = (id: string) => ws.stages.find((s) => s.id === id)?.color ?? "var(--fg-3)";
+  const active = ws.deals.filter((d) => d.stage !== "lost");
+  let title: string;
+  let deals: Deal[];
+  if (clientKey === "__otros__") {
+    const byClient = new Map<string, number>();
+    active.forEach((d) => byClient.set(d.company, (byClient.get(d.company) ?? 0) + d.value));
+    const top5 = new Set([...byClient.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map((e) => e[0]));
+    deals = active.filter((d) => !top5.has(d.company)).sort((a, b) => b.value - a.value);
+    title = "Otros clientes";
+  } else {
+    deals = active.filter((d) => d.company === clientKey).sort((a, b) => b.value - a.value);
+    title = clientKey;
+  }
+  const total = deals.reduce((a, d) => a + d.value, 0);
+  const won = deals.filter((d) => d.stage === "won");
+  const wonVal = won.reduce((a, d) => a + d.value, 0);
+
+  return (
+    <div className="drawer-backdrop" onClick={onClose}>
+      <aside className="ai-drawer kpi-drawer" style={{ width: "min(560px, 100vw)" }} onClick={(e) => e.stopPropagation()}>
+        <header className="ai-drawer__head" style={{ padding: "0 14px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ width: 28, height: 28, borderRadius: 6, background: "var(--accent)", color: "#fff", display: "grid", placeItems: "center" }}>
+              <Icon name="users" size={14} />
+            </span>
+            <div>
+              <div style={{ fontWeight: 600 }}>{title}</div>
+              <div style={{ fontSize: 10, color: "var(--fg-3)", fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                Cliente · sustento (ganados + en proceso)
+              </div>
+            </div>
+          </div>
+          <button type="button" className="btn btn--icon" onClick={onClose} aria-label="Cerrar"><Icon name="x" size={14} /></button>
+        </header>
+
+        <div className="ai-drawer__msgs" style={{ gap: 12, padding: 14 }}>
+          <div className="kpi-drawer__headline">
+            <div className="kpi-drawer__head-label">Ganados + en proceso</div>
+            <div className="kpi-drawer__head-value">{fmtMoney(total, currency)}</div>
+            <div className="kpi-drawer__head-sub">{deals.length} tratos · {won.length} ganados ({fmtMoney(wonVal, currency)}) · sin perdidos</div>
+          </div>
+          <div className="kpi-drawer__list">
+            {deals.map((d) => (
+              <div key={d.id} className="kpi-drawer__row" onClick={() => onOpenDeal(d.id)}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="kpi-drawer__row-name">{d.name}</div>
+                  <div className="kpi-drawer__row-sub"><span className="mono">{d.id}</span> · {d.company}</div>
+                </div>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--fg-3)", whiteSpace: "nowrap" }}>
+                  <span style={{ width: 7, height: 7, borderRadius: 2, background: stageColor(d.stage) }} />
+                  {stageLabel(d.stage)}
+                </span>
+                <span className="mono kpi-drawer__row-value">{fmtMoney(d.value, currency)}</span>
+              </div>
+            ))}
+            {deals.length === 0 && <div style={{ padding: 16, textAlign: "center", color: "var(--fg-3)", fontSize: 13 }}>Sin tratos</div>}
+          </div>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+/* ============================================================
+   StageDealsDrawer — sustento del embudo por etapa: lista las
+   oportunidades de una etapa. Los números cuadran: total = Σ value
+   de los tratos listados (mismo filtro que el embudo d.stage === stageId).
+   ============================================================ */
+function StageDealsDrawer({
+  stageId,
+  ws,
+  currency,
+  onClose,
+  onOpenDeal,
+}: {
+  stageId: string | null;
+  ws: { stages: { id: string; label: string; color: string }[]; deals: Deal[] };
+  currency: Currency;
+  onClose: () => void;
+  onOpenDeal: (id: string) => void;
+}) {
+  if (!stageId) return null;
+  const stage = ws.stages.find((s) => s.id === stageId);
+  const deals = ws.deals.filter((d) => d.stage === stageId).sort((a, b) => b.value - a.value);
+  const total = deals.reduce((a, d) => a + d.value, 0);
+  const color = stage?.color ?? "var(--accent)";
+  return (
+    <div className="drawer-backdrop" onClick={onClose}>
+      <aside className="ai-drawer kpi-drawer" style={{ width: "min(560px, 100vw)" }} onClick={(e) => e.stopPropagation()}>
+        <header className="ai-drawer__head" style={{ padding: "0 14px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ width: 28, height: 28, borderRadius: 6, background: color, color: "#fff", display: "grid", placeItems: "center" }}>
+              <Icon name="dollar" size={14} />
+            </span>
+            <div>
+              <div style={{ fontWeight: 600 }}>Pipeline · {stage?.label ?? stageId}</div>
+              <div style={{ fontSize: 10, color: "var(--fg-3)", fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                Sustento · oportunidades por etapa
+              </div>
+            </div>
+          </div>
+          <button type="button" className="btn btn--icon" onClick={onClose} aria-label="Cerrar">
+            <Icon name="x" size={14} />
+          </button>
+        </header>
+
+        <div className="ai-drawer__msgs" style={{ gap: 12, padding: 14 }}>
+          <div className="kpi-drawer__headline">
+            <div className="kpi-drawer__head-label">{stage?.label ?? stageId} · pipeline bruto</div>
+            <div className="kpi-drawer__head-value">{fmtMoney(total, currency)}</div>
+            <div className="kpi-drawer__head-sub">{deals.length} oportunidad(es) · suma exacta de los valores listados</div>
+          </div>
+          <div className="kpi-drawer__list">
+            {deals.map((d) => (
+              <div key={d.id} className="kpi-drawer__row" onClick={() => onOpenDeal(d.id)}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="kpi-drawer__row-name">{d.name}</div>
+                  <div className="kpi-drawer__row-sub">
+                    <span className="mono">{d.id}</span> · {d.company}
+                  </div>
+                </div>
+                {d.isRecurring && d.arr > 0 && (
+                  <span className="mono" style={{ fontSize: 11, color: "var(--info)" }}>ARR {fmtMoney(d.arr, currency)}</span>
+                )}
+                <span className="mono kpi-drawer__row-value">{fmtMoney(d.value, currency)}</span>
+              </div>
+            ))}
+            {deals.length === 0 && (
+              <div style={{ padding: 16, textAlign: "center", color: "var(--fg-3)", fontSize: 13 }}>
+                Sin oportunidades en esta etapa
+              </div>
+            )}
+          </div>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+/* ============================================================
+   OwnerDealsDrawer — sustento del Leaderboard: tratos de un ejecutivo
+   (ganados / abiertos / perdidos), con los totales que cuadran.
+   ============================================================ */
+function OwnerDealsDrawer({
+  ownerKey,
+  ws,
+  currency,
+  onClose,
+  onOpenDeal,
+}: {
+  ownerKey: string | null;
+  ws: {
+    owners: Record<string, { name: string; role?: string; color: string }>;
+    stages: { id: string; label: string; color: string }[];
+    deals: Deal[];
+  };
+  currency: Currency;
+  onClose: () => void;
+  onOpenDeal: (id: string) => void;
+}) {
+  if (!ownerKey) return null;
+  const owner = ws.owners[ownerKey];
+  const stageLabel = (id: string) => ws.stages.find((s) => s.id === id)?.label ?? id;
+  const stageColor = (id: string) => ws.stages.find((s) => s.id === id)?.color ?? "var(--fg-3)";
+  const all = ws.deals.filter((d) => d.owner === ownerKey);
+  const won = all.filter((d) => d.stage === "won").sort((a, b) => b.value - a.value);
+  const lost = all.filter((d) => d.stage === "lost").sort((a, b) => b.value - a.value);
+  const open = all.filter((d) => d.stage !== "won" && d.stage !== "lost").sort((a, b) => b.value - a.value);
+  const wonVal = won.reduce((a, d) => a + d.value, 0);
+  const openVal = open.reduce((a, d) => a + d.value, 0);
+  const color = owner?.color ?? "var(--accent)";
+  const initials = (owner?.name ?? "?").split(" ").map((p) => p[0]).slice(0, 2).join("");
+
+  const Row = (d: Deal) => (
+    <div key={d.id} className="kpi-drawer__row" onClick={() => onOpenDeal(d.id)}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="kpi-drawer__row-name">{d.name}</div>
+        <div className="kpi-drawer__row-sub">
+          <span className="mono">{d.id}</span> · {d.company}
+        </div>
+      </div>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--fg-3)", whiteSpace: "nowrap" }}>
+        <span style={{ width: 7, height: 7, borderRadius: 2, background: stageColor(d.stage) }} />
+        {stageLabel(d.stage)}
+      </span>
+      <span className="mono kpi-drawer__row-value">{fmtMoney(d.value, currency)}</span>
+    </div>
+  );
+
+  return (
+    <div className="drawer-backdrop" onClick={onClose}>
+      <aside className="ai-drawer kpi-drawer" style={{ width: "min(560px, 100vw)" }} onClick={(e) => e.stopPropagation()}>
+        <header className="ai-drawer__head" style={{ padding: "0 14px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ width: 28, height: 28, borderRadius: 6, background: color, color: "#fff", display: "grid", placeItems: "center", fontSize: 12, fontWeight: 700 }}>
+              {initials}
+            </span>
+            <div>
+              <div style={{ fontWeight: 600 }}>{owner?.name ?? ownerKey}</div>
+              <div style={{ fontSize: 10, color: "var(--fg-3)", fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                {owner?.role ?? "Leaderboard · sustento"}
+              </div>
+            </div>
+          </div>
+          <button type="button" className="btn btn--icon" onClick={onClose} aria-label="Cerrar">
+            <Icon name="x" size={14} />
+          </button>
+        </header>
+
+        <div className="ai-drawer__msgs" style={{ gap: 12, padding: 14 }}>
+          <div className="kpi-drawer__headline">
+            <div className="kpi-drawer__head-label">Cerrado · ganado</div>
+            <div className="kpi-drawer__head-value">{fmtMoney(wonVal, currency)}</div>
+            <div className="kpi-drawer__head-sub">
+              {won.length} ganados · {open.length} abiertos ({fmtMoney(openVal, currency)}) · {lost.length} perdidos · {all.length} tratos en total
+            </div>
+          </div>
+
+          {won.length > 0 && (
+            <>
+              <div className="kpi-drawer__section"><span>✅ Ganados ({won.length})</span><span style={{ marginLeft: "auto" }} className="mono">{fmtMoney(wonVal, currency)}</span></div>
+              <div className="kpi-drawer__list">{won.map(Row)}</div>
+            </>
+          )}
+          {open.length > 0 && (
+            <>
+              <div className="kpi-drawer__section"><span>🟦 Abiertos ({open.length})</span><span style={{ marginLeft: "auto" }} className="mono">{fmtMoney(openVal, currency)}</span></div>
+              <div className="kpi-drawer__list">{open.map(Row)}</div>
+            </>
+          )}
+          {lost.length > 0 && (
+            <>
+              <div className="kpi-drawer__section"><span>❌ Perdidos ({lost.length})</span></div>
+              <div className="kpi-drawer__list">{lost.map(Row)}</div>
+            </>
+          )}
+          {all.length === 0 && (
+            <div style={{ padding: 16, textAlign: "center", color: "var(--fg-3)", fontSize: 13 }}>Sin tratos asignados</div>
+          )}
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+/* ============================================================
+   LeaderboardCompare — leaderboard con el MISMO look que NOVIT vs
+   SHARKY: donut + filas con borde de color y valor a la derecha.
+   ============================================================ */
+function LeaderboardCompare({ data, currency, onOwner }: { data: OwnerRow[]; currency: Currency; onOwner?: (k: string) => void }) {
+  const total = data.reduce((a, o) => a + o.won, 0);
+  const totalWon = data.reduce((a, o) => a + o.wonCount, 0);
+  const size = 168;
+  const cx = size / 2;
+  const cy = size / 2;
+  const rO = 74;
+  const rI = 48;
+  const arc = (s: number, e: number) => {
+    const sa = s * Math.PI * 2 - Math.PI / 2;
+    const ea = e * Math.PI * 2 - Math.PI / 2;
+    const x1o = cx + rO * Math.cos(sa), y1o = cy + rO * Math.sin(sa);
+    const x2o = cx + rO * Math.cos(ea), y2o = cy + rO * Math.sin(ea);
+    const x1i = cx + rI * Math.cos(ea), y1i = cy + rI * Math.sin(ea);
+    const x2i = cx + rI * Math.cos(sa), y2i = cy + rI * Math.sin(sa);
+    const large = e - s > 0.5 ? 1 : 0;
+    return `M ${x1o} ${y1o} A ${rO} ${rO} 0 ${large} 1 ${x2o} ${y2o} L ${x1i} ${y1i} A ${rI} ${rI} 0 ${large} 0 ${x2i} ${y2i} Z`;
+  };
+  let cum = 0;
+  const slices = data
+    .filter((o) => o.won > 0)
+    .map((o) => {
+      const v = o.won / total;
+      const d = arc(cum, cum + v);
+      cum += v;
+      return { d, color: o.color, key: o.k };
+    });
+
+  return (
+    <div className="ws-compare__layout" style={{ gridTemplateColumns: `${size + 12}px 1fr`, gap: 18 }}>
+      <div className="ws-compare__donut" style={{ width: size, height: size }}>
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+          {total > 0 ? (
+            slices.map((s) => <path key={s.key} d={s.d} fill={s.color} stroke="var(--bg)" strokeWidth={2} />)
+          ) : (
+            <circle cx={cx} cy={cy} r={(rO + rI) / 2} fill="none" stroke="var(--bg-3)" strokeWidth={rO - rI} />
+          )}
+        </svg>
+        <div className="ws-compare__center">
+          <span className="ws-compare__total-lbl">Cerrado</span>
+          <span className="ws-compare__total">{fmtMoney(total, currency)}</span>
+          <span className="ws-compare__total-sub">{totalWon} {totalWon === 1 ? "ganado" : "ganados"}</span>
+        </div>
+      </div>
+      <div className="ws-compare__legend">
+        {data.map((o) => {
+          const pct = total ? (o.won / total) * 100 : 0;
+          const clickable = !!onOwner;
+          return (
+            <div
+              key={o.k}
+              className={`ws-compare__legend-row${clickable ? " ws-compare__legend-row--clickable" : ""}`}
+              style={{ "--ws-c": o.color } as React.CSSProperties}
+              onClick={clickable ? () => onOwner(o.k) : undefined}
+              title={clickable ? `Ver tratos de ${o.name}` : undefined}
+            >
+              <span className="ws-compare__dot" />
+              <div>
+                <b>{o.name}</b>
+                <span className="mono">{o.wonCount} {o.wonCount === 1 ? "ganado" : "ganados"} · {o.deals} tratos · {Math.round(pct)}%</span>
+              </div>
+              <span className="ws-compare__legend-val">{fmtMoney(o.won, currency)}</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -577,6 +1259,10 @@ export default function DashboardRoute() {
   const ws = useActiveWorkspace();
   const navigate = useNavigate();
   const [kpiDetail, setKpiDetail] = useState<KpiId | null>(null);
+  const [stageDetail, setStageDetail] = useState<string | null>(null);
+  const [ownerDetail, setOwnerDetail] = useState<string | null>(null);
+  const [clientDetail, setClientDetail] = useState<string | null>(null);
+  const [lostClientDetail, setLostClientDetail] = useState<string | null>(null);
 
   // ---------- métricas base (todas via lib/metrics — fuente única) ----------
   const open = ws.deals.filter((d) => d.stage !== "won" && d.stage !== "lost");
@@ -633,11 +1319,11 @@ export default function DashboardRoute() {
   const leaderboard: OwnerRow[] = Object.entries(ws.owners as OwnersByKey)
     .map(([k, o]) => {
       const ds = ws.deals.filter((d) => d.owner === k);
-      const wonV = ds.filter((d) => d.stage === "won").reduce((a, d) => a + d.value, 0);
-      return { k, name: o.name, role: o.role, color: o.color, won: wonV, deals: ds.length };
+      const wonDeals = ds.filter((d) => d.stage === "won");
+      const wonV = wonDeals.reduce((a, d) => a + d.value, 0);
+      return { k, name: o.name, role: o.role, color: o.color, won: wonV, deals: ds.length, wonCount: wonDeals.length };
     })
     .sort((a, b) => b.won - a.won);
-  const lbTotal = leaderboard.reduce((a, o) => a + o.won, 0);
 
   // ---------- SaaS (todas via lib/metrics — match exacto con drawer) ----------
   const recurring = ws.deals.filter((d) => d.isRecurring);
@@ -655,11 +1341,23 @@ export default function DashboardRoute() {
     const ds = ws.deals.filter((d) => d.stage === s.id);
     return { ...s, totalValue: ds.reduce((a, d) => a + d.value, 0), count: ds.length };
   });
-  const maxFunnel = Math.max(...funnel.map((f) => f.totalValue), 1);
+
+  // ---------- Cliente con mayor valor en oportunidades perdidas ----------
+  const lostByClient = new Map<string, { value: number; count: number }>();
+  ws.deals
+    .filter((d) => d.stage === "lost")
+    .forEach((d) => {
+      const cur = lostByClient.get(d.company) ?? { value: 0, count: 0 };
+      cur.value += d.value;
+      cur.count += 1;
+      lostByClient.set(d.company, cur);
+    });
+  const topLostClient =
+    [...lostByClient.entries()].map(([name, v]) => ({ name, ...v })).sort((a, b) => b.value - a.value)[0] ?? null;
 
   return (
     <div className="dash">
-      {/* ───── 9 KPI cards ───── */}
+      {/* ───── KPI cards ───── */}
       <div className="dash__row dash__row--kpi">
         <Kpi label="Forecast Proyectado" value={fmtMoney(forecastValue, currency)} delta="+18.4%" deltaDir="up" help="Σ valor × prob IA" spark={sparkForecast} sparkColor="var(--accent)" onClick={() => setKpiDetail("forecast")} />
         <Kpi label="Sales Velocity" value={avgSalesVelocity + "d"} delta="-3d" deltaDir="up" help="Lead → Cierre" spark={sparkVelocity} sparkColor="#16a34a" sparkInvert onClick={() => setKpiDetail("velocity")} />
@@ -667,6 +1365,18 @@ export default function DashboardRoute() {
         <Kpi label="Win Rate" value={winRate + "%"} delta="+2.1pp" deltaDir="up" help="Won / (Won + Lost)" spark={sparkWinRate} onClick={() => setKpiDetail("winrate")} />
         <Kpi label="Tasa de Conversión" value={conversionRate + "%"} delta="+3.2pp" deltaDir="up" help="Lead → Cliente" spark={sparkConversion} onClick={() => setKpiDetail("conversion")} />
         <Kpi label="Forecast Perdido" value={fmtMoney(lostValue, currency)} delta={lost.length + " tratos"} deltaDir="down" help="Σ valor de tratos Lost" spark={sparkLost} sparkColor="var(--danger)" sparkInvert onClick={() => setKpiDetail("lost_forecast")} />
+        <Kpi
+          label="Cliente top perdido"
+          value={topLostClient ? fmtMoney(topLostClient.value, currency) : "—"}
+          valueColor="#dc2626"
+          delta={topLostClient ? (topLostClient.name.length > 20 ? topLostClient.name.slice(0, 19) + "…" : topLostClient.name) : "sin pérdidas"}
+          deltaDir="down"
+          help={topLostClient ? `Cobrarle 2× la próxima: ${fmtMoney(topLostClient.value * 2, currency)}` : "Cliente con más valor perdido"}
+          spark={sparkLost}
+          sparkColor="var(--danger)"
+          sparkInvert
+          onClick={() => { if (topLostClient) setLostClientDetail(topLostClient.name); }}
+        />
         <Kpi label="Clientes activos" value={customersCount.toString()} delta={customerArr > 0 ? "ARR " + fmtMoney(customerArr, currency) : "+1 este Q"} deltaDir="up" help="Cuentas con ≥ 1 trato ganado" spark={sparkClients} onClick={() => setKpiDetail("clients")} />
         <Kpi label="Oportunidades vigentes" value={open.length.toString()} delta={fmtMoney(pipelineValue, currency)} deltaDir="up" help="Abiertas · sin won ni lost" spark={sparkOpen} sparkColor="var(--accent)" onClick={() => setKpiDetail("open_deals")} />
         <Kpi label="Cartera total" value={carteraCount.toString()} delta={`${carteraCount - carteraLostOnly} activos · ${carteraLostOnly} solo lost`} deltaDir="up" help="Empresas únicas en el CRM (incluye perdidos)" spark={sparkClients} sparkColor="var(--fg-3)" onClick={() => setKpiDetail("cartera")} />
@@ -720,28 +1430,10 @@ export default function DashboardRoute() {
         <MonthlyBillingChart deals={ws.deals} today={ws.today} currency={currency} kind="saas" />
       </div>
 
-      {/* ───── Pipeline bruto por etapa ───── */}
-      <div className="dash__row" style={{ gridTemplateColumns: "1fr" }}>
-        <div className="card">
-          <div className="card__h">
-            <Icon name="dollar" size={14} style={{ color: "var(--success)" }} />
-            <span style={{ fontWeight: 600 }}>Pipeline bruto por etapa</span>
-            <span className="card__sub">sin ponderar · incluye Closed Won · {fmtMoney(funnel.reduce((a, s) => a + s.totalValue, 0), currency)}</span>
-          </div>
-          <div className="card__b">
-            <div className="stage-funnel">
-              {funnel.map((s) => (
-                <div key={s.id} className="stage-funnel__row">
-                  <span style={{ color: "var(--fg-2)" }}>{s.label}</span>
-                  <div className="stage-funnel__bar">
-                    <div style={{ width: (s.totalValue / maxFunnel) * 100 + "%", background: s.color }} />
-                  </div>
-                  <span className="stage-funnel__val">{fmtMoney(s.totalValue, currency)}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+      {/* ───── Top 5 clientes (pie) + Embudo por etapa ───── */}
+      <div className="dash__row" style={{ gridTemplateColumns: "1fr 1fr" }}>
+        <TopClientsPieCard deals={ws.deals} currency={currency} onClient={(k) => setClientDetail(k)} />
+        <StageFunnelCard funnel={funnel} currency={currency} onStage={(id) => setStageDetail(id)} />
       </div>
 
       {/* ───── Métricas SaaS · Leaderboard ───── */}
@@ -796,22 +1488,7 @@ export default function DashboardRoute() {
             <span style={{ fontWeight: 600 }}>Leaderboard</span>
           </div>
           <div className="card__b">
-            <div className="lb-exec">
-              <LeaderboardPie data={leaderboard} />
-              <ul className="lb-legend">
-                {leaderboard.map((o) => {
-                  const pct = lbTotal ? (o.won / lbTotal) * 100 : 0;
-                  return (
-                    <li key={o.k} className="lb-legend__row" title={`${o.name} · ${o.role}`}>
-                      <span className="lb-legend__dot" style={{ background: o.color }} />
-                      <span className="lb-legend__name">{o.name}</span>
-                      <span className="lb-legend__val mono">{fmtMoney(o.won, currency)}</span>
-                      <span className="lb-legend__pct mono">{pct.toFixed(0)}%</span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
+            <LeaderboardCompare data={leaderboard} currency={currency} onOwner={(k) => setOwnerDetail(k)} />
           </div>
         </div>
       </div>
@@ -848,6 +1525,54 @@ export default function DashboardRoute() {
         onClose={() => setKpiDetail(null)}
         onOpenDeal={(id) => {
           setKpiDetail(null);
+          setSelectedDeal(id);
+        }}
+      />
+
+      {/* ───── Stage Detail Drawer (sustento por etapa) ───── */}
+      <StageDealsDrawer
+        stageId={stageDetail}
+        ws={ws}
+        currency={currency}
+        onClose={() => setStageDetail(null)}
+        onOpenDeal={(id) => {
+          setStageDetail(null);
+          setSelectedDeal(id);
+        }}
+      />
+
+      {/* ───── Owner Detail Drawer (sustento del leaderboard) ───── */}
+      <OwnerDealsDrawer
+        ownerKey={ownerDetail}
+        ws={ws}
+        currency={currency}
+        onClose={() => setOwnerDetail(null)}
+        onOpenDeal={(id) => {
+          setOwnerDetail(null);
+          setSelectedDeal(id);
+        }}
+      />
+
+      {/* ───── Client Detail Drawer (sustento Top 5 clientes) ───── */}
+      <ClientDealsDrawer
+        clientKey={clientDetail}
+        ws={ws}
+        currency={currency}
+        onClose={() => setClientDetail(null)}
+        onOpenDeal={(id) => {
+          setClientDetail(null);
+          setSelectedDeal(id);
+        }}
+      />
+
+      {/* ───── Lost Client Drawer (sustento KPI cliente top perdido) ───── */}
+      <LostClientDrawer
+        clientName={lostClientDetail}
+        ws={ws}
+        currency={currency}
+        onClose={() => setLostClientDetail(null)}
+        onOpenDeal={(id) => {
+          setLostClientDetail(null);
           setSelectedDeal(id);
         }}
       />
