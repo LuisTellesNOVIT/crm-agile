@@ -72,6 +72,30 @@ function Sparkline({
 /* ============================================================
    KPI card with delta + sparkline
    ============================================================ */
+/** Badge ⓘ con tooltip (fórmula + para qué sirve). Reutilizable en KPI y SaaS. */
+function InfoTip({ formula, purpose }: { formula?: string; purpose?: string }) {
+  if (!formula && !purpose) return null;
+  return (
+    <span className="kpi__info" tabIndex={0} onClick={(e) => e.stopPropagation()} aria-label="Cómo se calcula">
+      i
+      <span className="kpi__tip" role="tooltip">
+        {formula && (
+          <>
+            <b>Fórmula</b>
+            <span>{formula}</span>
+          </>
+        )}
+        {purpose && (
+          <>
+            <b>Para qué sirve</b>
+            <span>{purpose}</span>
+          </>
+        )}
+      </span>
+    </span>
+  );
+}
+
 function Kpi({
   label,
   value,
@@ -107,30 +131,7 @@ function Kpi({
     >
       <div className="kpi__label">
         <span>{label}</span>
-        {(formula || purpose) && (
-          <span
-            className="kpi__info"
-            tabIndex={0}
-            onClick={(e) => e.stopPropagation()}
-            aria-label="Cómo se calcula"
-          >
-            i
-            <span className="kpi__tip" role="tooltip">
-              {formula && (
-                <>
-                  <b>Fórmula</b>
-                  <span>{formula}</span>
-                </>
-              )}
-              {purpose && (
-                <>
-                  <b>Para qué sirve</b>
-                  <span>{purpose}</span>
-                </>
-              )}
-            </span>
-          </span>
-        )}
+        <InfoTip formula={formula} purpose={purpose} />
         <Icon
           name="external"
           size={11}
@@ -1466,35 +1467,35 @@ export default function DashboardRoute() {
           <div className="card__b">
             <div className="saas-grid">
               <button type="button" className="saas-kpi saas-kpi--clickable" onClick={() => setKpiDetail("arr_total")}>
-                <small>ARR total <Icon name="external" size={9} style={{ verticalAlign: "middle", color: "var(--fg-4)", marginLeft: 4 }} /></small>
+                <small>ARR total <Icon name="external" size={9} style={{ verticalAlign: "middle", color: "var(--fg-4)", marginLeft: 4 }} /><InfoTip formula="Σ ARR de los contratos ganados recurrentes" purpose="Ingreso anual recurrente total ya comprometido." /></small>
                 <b>{fmtMoney(totalARR, currency)}</b>
               </button>
               <button type="button" className="saas-kpi saas-kpi--clickable" onClick={() => setKpiDetail("mrr")}>
-                <small>MRR estimado <Icon name="external" size={9} style={{ verticalAlign: "middle", color: "var(--fg-4)", marginLeft: 4 }} /></small>
+                <small>MRR estimado <Icon name="external" size={9} style={{ verticalAlign: "middle", color: "var(--fg-4)", marginLeft: 4 }} /><InfoTip formula="ARR total / 12" purpose="Ingreso recurrente mensual base de los clientes activos." /></small>
                 <b>{fmtMoney(totalMRR, currency)}</b>
               </button>
               <button type="button" className="saas-kpi saas-kpi--clickable" onClick={() => setKpiDetail("new_arr")}>
-                <small>New ARR ganado <Icon name="external" size={9} style={{ verticalAlign: "middle", color: "var(--fg-4)", marginLeft: 4 }} /></small>
+                <small>New ARR ganado <Icon name="external" size={9} style={{ verticalAlign: "middle", color: "var(--fg-4)", marginLeft: 4 }} /><InfoTip formula="Σ ARR de contratos recurrentes ganados en los últimos 90 días" purpose="Crecimiento reciente de ingreso recurrente (último trimestre)." /></small>
                 <b style={{ color: "var(--success)" }}>{fmtMoney(newARR, currency)}</b>
               </button>
               <button type="button" className="saas-kpi saas-kpi--clickable" onClick={() => setKpiDetail("pipeline_arr_w")}>
-                <small>Pipeline ARR (w) <Icon name="external" size={9} style={{ verticalAlign: "middle", color: "var(--fg-4)", marginLeft: 4 }} /></small>
+                <small>Pipeline ARR (w) <Icon name="external" size={9} style={{ verticalAlign: "middle", color: "var(--fg-4)", marginLeft: 4 }} /><InfoTip formula="Σ (ARR × probabilidad) de tratos recurrentes abiertos" purpose="ARR esperado del pipeline, ponderado por la chance de cierre." /></small>
                 <b>{fmtMoney(pipelineARR, currency)}</b>
               </button>
               <button type="button" className="saas-kpi saas-kpi--clickable" onClick={() => setKpiDetail("net_retention")}>
-                <small>Net retention <Icon name="external" size={9} style={{ verticalAlign: "middle", color: "var(--fg-4)", marginLeft: 4 }} /></small>
+                <small>Net retention <Icon name="external" size={9} style={{ verticalAlign: "middle", color: "var(--fg-4)", marginLeft: 4 }} /><InfoTip formula="(ARR inicial + expansión − churn) / ARR inicial" purpose="Cuánto crece o cae el ingreso de tus clientes actuales (>100% = crecen sin sumar nuevos)." /></small>
                 <b>{nrr.nrr}%</b>
               </button>
               <button type="button" className="saas-kpi saas-kpi--clickable" onClick={() => setKpiDetail("logo_churn")}>
-                <small>Logo churn <Icon name="external" size={9} style={{ verticalAlign: "middle", color: "var(--fg-4)", marginLeft: 4 }} /></small>
+                <small>Logo churn <Icon name="external" size={9} style={{ verticalAlign: "middle", color: "var(--fg-4)", marginLeft: 4 }} /><InfoTip formula="Clientes solo-perdidos / (ganados + solo-perdidos)" purpose="% de cuentas que se dieron de baja (rotación de logos)." /></small>
                 <b>{churn.churn}%</b>
               </button>
               <button type="button" className="saas-kpi saas-kpi--clickable" onClick={() => setKpiDetail("cac_payback")}>
-                <small>CAC payback <Icon name="external" size={9} style={{ verticalAlign: "middle", color: "var(--fg-4)", marginLeft: 4 }} /></small>
+                <small>CAC payback <Icon name="external" size={9} style={{ verticalAlign: "middle", color: "var(--fg-4)", marginLeft: 4 }} /><InfoTip formula="CAC / (MRR × margen bruto)" purpose="Meses que tarda un cliente en repagar su costo de adquisición." /></small>
                 <b>{cacPay.payback}m</b>
               </button>
               <button type="button" className="saas-kpi saas-kpi--clickable" onClick={() => setKpiDetail("ltv_cac")}>
-                <small>LTV / CAC <Icon name="external" size={9} style={{ verticalAlign: "middle", color: "var(--fg-4)", marginLeft: 4 }} /></small>
+                <small>LTV / CAC <Icon name="external" size={9} style={{ verticalAlign: "middle", color: "var(--fg-4)", marginLeft: 4 }} /><InfoTip formula="LTV / CAC  (LTV = ARPA × margen / churn mensual)" purpose="Cuántas veces recuperás lo invertido en captar un cliente (sano ≥ 3×)." /></small>
                 <b>{ltvCac.ratio}x</b>
               </button>
             </div>
