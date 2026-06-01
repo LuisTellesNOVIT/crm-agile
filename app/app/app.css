@@ -4511,7 +4511,70 @@ a.nav-item.is-active { color: var(--fg); }
   gap: 8px;
   min-width: 0;
   position: relative;
-  overflow: hidden;
+  overflow: visible;
+}
+/* badge de info + tooltip (fórmula / para qué sirve) */
+.kpi__info {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid var(--border-2);
+  color: var(--fg-3);
+  font-family: var(--font-sans);
+  font-size: 9px;
+  font-weight: 700;
+  font-style: italic;
+  text-transform: none;
+  letter-spacing: 0;
+  cursor: help;
+  flex-shrink: 0;
+}
+.kpi__info:hover { color: var(--accent); border-color: var(--accent); }
+.kpi__tip {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: -6px;
+  width: 244px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-2);
+  border-radius: 9px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: var(--font-sans);
+  text-transform: none;
+  letter-spacing: 0;
+  z-index: 60;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  transition: opacity 0.14s ease, transform 0.14s ease;
+  pointer-events: none;
+}
+.kpi__info:hover .kpi__tip,
+.kpi__info:focus-visible .kpi__tip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+.kpi__tip b {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  margin-top: 4px;
+}
+.kpi__tip b:first-child { margin-top: 0; }
+.kpi__tip span {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fg);
 }
 .kpi__label {
   font-size: 10px;
@@ -4540,6 +4603,7 @@ a.nav-item.is-active { color: var(--fg); }
   right: 12px; bottom: 12px;
   width: 80px; height: 32px;
   pointer-events: none;
+  overflow: hidden;
 }
 
 .forecast-bar { display: flex; height: 28px; border-radius: var(--radius-sm); overflow: hidden; }

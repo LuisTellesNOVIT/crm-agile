@@ -82,6 +82,8 @@ function Kpi({
   sparkColor = "var(--accent)",
   sparkInvert = false,
   valueColor,
+  formula,
+  purpose,
   onClick,
 }: {
   label: string;
@@ -93,6 +95,8 @@ function Kpi({
   sparkColor?: string;
   sparkInvert?: boolean;
   valueColor?: string;
+  formula?: string;
+  purpose?: string;
   onClick?: () => void;
 }) {
   return (
@@ -103,6 +107,30 @@ function Kpi({
     >
       <div className="kpi__label">
         <span>{label}</span>
+        {(formula || purpose) && (
+          <span
+            className="kpi__info"
+            tabIndex={0}
+            onClick={(e) => e.stopPropagation()}
+            aria-label="Cómo se calcula"
+          >
+            i
+            <span className="kpi__tip" role="tooltip">
+              {formula && (
+                <>
+                  <b>Fórmula</b>
+                  <span>{formula}</span>
+                </>
+              )}
+              {purpose && (
+                <>
+                  <b>Para qué sirve</b>
+                  <span>{purpose}</span>
+                </>
+              )}
+            </span>
+          </span>
+        )}
         <Icon
           name="external"
           size={11}
@@ -1350,10 +1378,10 @@ export default function DashboardRoute() {
     <div className="dash">
       {/* ───── KPI cards ───── */}
       <div className="dash__row dash__row--kpi">
-        <Kpi label="Forecast Proyectado" value={fmtMoney(forecastValue, currency)} delta="+18.4%" deltaDir="up" help="Σ valor × prob IA" spark={sparkForecast} sparkColor="var(--accent)" onClick={() => setKpiDetail("forecast")} />
-        <Kpi label="Win Rate" value={winRate + "%"} delta="+2.1pp" deltaDir="up" help="Won / (Won + Lost)" spark={sparkWinRate} onClick={() => setKpiDetail("winrate")} />
-        <Kpi label="Tasa de Conversión" value={conversionRate + "%"} delta="+3.2pp" deltaDir="up" help="Lead → Cliente" spark={sparkConversion} onClick={() => setKpiDetail("conversion")} />
-        <Kpi label="Forecast Perdido" value={fmtMoney(lostValue, currency)} delta={lost.length + " tratos"} deltaDir="down" help="Σ valor de tratos Lost" spark={sparkLost} sparkColor="var(--danger)" sparkInvert onClick={() => setKpiDetail("lost_forecast")} />
+        <Kpi label="Forecast Proyectado" value={fmtMoney(forecastValue, currency)} delta="+18.4%" deltaDir="up" help="Σ valor × prob IA" formula="Σ (valor del trato × probabilidad IA) de los tratos abiertos" purpose="Estima cuánto vas a cerrar, ponderado por la chance de ganar cada trato." spark={sparkForecast} sparkColor="var(--accent)" onClick={() => setKpiDetail("forecast")} />
+        <Kpi label="Win Rate" value={winRate + "%"} delta="+2.1pp" deltaDir="up" help="Won / (Won + Lost)" formula="Ganados / (Ganados + Perdidos)" purpose="Efectividad de cierre entre los tratos ya decididos (no cuenta los abiertos)." spark={sparkWinRate} onClick={() => setKpiDetail("winrate")} />
+        <Kpi label="Tasa de Conversión" value={conversionRate + "%"} delta="+3.2pp" deltaDir="up" help="Lead → Cliente" formula="Ganados / Todos los tratos (incluye abiertos)" purpose="% del embudo total que se vuelve cliente (lead → cliente)." spark={sparkConversion} onClick={() => setKpiDetail("conversion")} />
+        <Kpi label="Forecast Perdido" value={fmtMoney(lostValue, currency)} delta={lost.length + " tratos"} deltaDir="down" help="Σ valor de tratos Lost" formula="Σ valor de los tratos en estado Perdido" purpose="Cuánto valor se perdió; dimensiona las fugas del pipeline." spark={sparkLost} sparkColor="var(--danger)" sparkInvert onClick={() => setKpiDetail("lost_forecast")} />
         <Kpi
           label="Cliente top perdido"
           value={topLostClient ? fmtMoney(topLostClient.value, currency) : "—"}
@@ -1364,11 +1392,13 @@ export default function DashboardRoute() {
           spark={sparkLost}
           sparkColor="var(--danger)"
           sparkInvert
+          formula="Cliente con mayor Σ valor de tratos perdidos"
+          purpose="Identifica la cuenta donde más plata se escapó."
           onClick={() => { if (topLostClient) setLostClientDetail(topLostClient.name); }}
         />
-        <Kpi label="Clientes activos" value={customersCount.toString()} delta={customerArr > 0 ? "ARR " + fmtMoney(customerArr, currency) : "+1 este Q"} deltaDir="up" help="Cuentas con ≥ 1 trato ganado" spark={sparkClients} onClick={() => setKpiDetail("clients")} />
-        <Kpi label="Oportunidades vigentes" value={open.length.toString()} delta={fmtMoney(pipelineValue, currency)} deltaDir="up" help="Abiertas · sin won ni lost" spark={sparkOpen} sparkColor="var(--accent)" onClick={() => setKpiDetail("open_deals")} />
-        <Kpi label="Cartera total" value={carteraCount.toString()} delta={`${carteraCount - carteraLostOnly} activos · ${carteraLostOnly} solo lost`} deltaDir="up" help="Empresas únicas en el CRM (incluye perdidos)" spark={sparkClients} sparkColor="var(--fg-3)" onClick={() => setKpiDetail("cartera")} />
+        <Kpi label="Clientes activos" value={customersCount.toString()} delta={customerArr > 0 ? "ARR " + fmtMoney(customerArr, currency) : "+1 este Q"} deltaDir="up" help="Cuentas con ≥ 1 trato ganado" formula="Cuentas (empresas) con ≥ 1 trato ganado" purpose="Tamaño real de tu base de clientes." spark={sparkClients} onClick={() => setKpiDetail("clients")} />
+        <Kpi label="Oportunidades vigentes" value={open.length.toString()} delta={fmtMoney(pipelineValue, currency)} deltaDir="up" help="Abiertas · sin won ni lost" formula="Tratos abiertos (sin ganar ni perder)" purpose="Cuántas oportunidades activas tenés en juego ahora." spark={sparkOpen} sparkColor="var(--accent)" onClick={() => setKpiDetail("open_deals")} />
+        <Kpi label="Cartera total" value={carteraCount.toString()} delta={`${carteraCount - carteraLostOnly} activos · ${carteraLostOnly} solo lost`} deltaDir="up" help="Empresas únicas en el CRM (incluye perdidos)" formula="Empresas únicas en el CRM (incluye perdidas)" purpose="Tamaño total de la cartera trabajada (activa + perdida)." spark={sparkClients} sparkColor="var(--fg-3)" onClick={() => setKpiDetail("cartera")} />
       </div>
 
       {/* ───── AI Forecast · Pipeline weighted ───── */}
