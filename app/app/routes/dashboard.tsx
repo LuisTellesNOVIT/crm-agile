@@ -16,8 +16,6 @@ import {
   computeLogoChurn,
   computeCacPayback,
   computeLtvCac,
-  computeSalesVelocity,
-  leadResponseTime,
   computeForecast,
   computePipelineValue,
   computeLostValue,
@@ -1299,15 +1297,8 @@ export default function DashboardRoute() {
     return { customers: all.filter((c) => c.won > 0), cartera: all };
   }, [ws.deals]);
 
-  // Sales Velocity: si hay data won real, computar; sino fallback decorativo
-  const computedVelocity = computeSalesVelocity(ws.deals);
-  const avgSalesVelocity = computedVelocity > 0 ? computedVelocity : (workspace === "sharky" ? 22 : 47);
-  const avgResponseTime = leadResponseTime(workspace);
-
   // Sparklines determinísticos (en producción saldrían de una tabla de métricas)
   const sparkForecast = trend(forecastValue, 12, 1.7);
-  const sparkVelocity = trend(avgSalesVelocity, 8, 3.2, "noisy");
-  const sparkResponse = trend(avgResponseTime, 8, 4.5, "noisy");
   const sparkWinRate = trend(winRate, 9, 5.5);
   const sparkConversion = trend(conversionRate, 9, 6.3);
   const sparkLost = trend(lostValue, 12, 7.1, "noisy");
@@ -1360,8 +1351,6 @@ export default function DashboardRoute() {
       {/* ───── KPI cards ───── */}
       <div className="dash__row dash__row--kpi">
         <Kpi label="Forecast Proyectado" value={fmtMoney(forecastValue, currency)} delta="+18.4%" deltaDir="up" help="Σ valor × prob IA" spark={sparkForecast} sparkColor="var(--accent)" onClick={() => setKpiDetail("forecast")} />
-        <Kpi label="Sales Velocity" value={avgSalesVelocity + "d"} delta="-3d" deltaDir="up" help="Lead → Cierre" spark={sparkVelocity} sparkColor="#16a34a" sparkInvert onClick={() => setKpiDetail("velocity")} />
-        <Kpi label="Lead Response Time" value={avgResponseTime + "h"} delta="-22m" deltaDir="up" help="Primer toque WhatsApp" spark={sparkResponse} sparkColor="#16a34a" sparkInvert onClick={() => setKpiDetail("response")} />
         <Kpi label="Win Rate" value={winRate + "%"} delta="+2.1pp" deltaDir="up" help="Won / (Won + Lost)" spark={sparkWinRate} onClick={() => setKpiDetail("winrate")} />
         <Kpi label="Tasa de Conversión" value={conversionRate + "%"} delta="+3.2pp" deltaDir="up" help="Lead → Cliente" spark={sparkConversion} onClick={() => setKpiDetail("conversion")} />
         <Kpi label="Forecast Perdido" value={fmtMoney(lostValue, currency)} delta={lost.length + " tratos"} deltaDir="down" help="Σ valor de tratos Lost" spark={sparkLost} sparkColor="var(--danger)" sparkInvert onClick={() => setKpiDetail("lost_forecast")} />
