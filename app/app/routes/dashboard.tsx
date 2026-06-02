@@ -8,14 +8,11 @@ import {
 } from "../lib/store";
 import { fmtMoney, fmtMoneyFull, daysBetween } from "../lib/format";
 import {
-  computeArrTotal,
   computeMrr,
   computeNewArr,
   computePipelineArrWeighted,
   computeNetRetention,
-  computeLogoChurn,
   computeCacPayback,
-  computeLtvCac,
   computeForecast,
   computePipelineValue,
   computeLostValue,
@@ -1347,14 +1344,11 @@ export default function DashboardRoute() {
 
   // ---------- SaaS (todas via lib/metrics — match exacto con drawer) ----------
   const recurring = ws.deals.filter((d) => d.isRecurring);
-  const totalARR = computeArrTotal(ws.deals);
   const totalMRR = computeMrr(ws.deals);
   const newARR = computeNewArr(ws.deals, 90);
   const pipelineARR = computePipelineArrWeighted(ws.deals);
   const nrr = computeNetRetention(ws.deals);
-  const churn = computeLogoChurn(ws.deals);
   const cacPay = computeCacPayback(ws.deals);
-  const ltvCac = computeLtvCac(ws.deals);
 
   // ---------- Pipeline bruto por etapa (sin ponderar, incluye Closed Won) ----------
   const funnel = ws.stages.filter((s) => s.id !== "lost").map((s) => {
@@ -1400,6 +1394,41 @@ export default function DashboardRoute() {
         <Kpi label="Clientes activos" value={customersCount.toString()} delta={customerArr > 0 ? "ARR " + fmtMoney(customerArr, currency) : "+1 este Q"} deltaDir="up" help="Cuentas con ≥ 1 trato ganado" formula="Cuentas (empresas) con ≥ 1 trato ganado" purpose="Tamaño real de tu base de clientes." spark={sparkClients} onClick={() => setKpiDetail("clients")} />
         <Kpi label="Oportunidades vigentes" value={open.length.toString()} delta={fmtMoney(pipelineValue, currency)} deltaDir="up" help="Abiertas · sin won ni lost" formula="Tratos abiertos (sin ganar ni perder)" purpose="Cuántas oportunidades activas tenés en juego ahora." spark={sparkOpen} sparkColor="var(--accent)" onClick={() => setKpiDetail("open_deals")} />
         <Kpi label="Cartera total" value={carteraCount.toString()} delta={`${carteraCount - carteraLostOnly} activos · ${carteraLostOnly} solo lost`} deltaDir="up" help="Empresas únicas en el CRM (incluye perdidos)" formula="Empresas únicas en el CRM (incluye perdidas)" purpose="Tamaño total de la cartera trabajada (activa + perdida)." spark={sparkClients} sparkColor="var(--fg-3)" onClick={() => setKpiDetail("cartera")} />
+      </div>
+
+      {/* ───── SaaS (grupo, junto a los KPI) ───── */}
+      <div className="dash__row" style={{ gridTemplateColumns: "1fr" }}>
+        <div className="card">
+          <div className="card__h">
+            <Icon name="dollar" size={14} style={{ color: "var(--success)" }} />
+            <span style={{ fontWeight: 600 }}>SaaS · ARR</span>
+            <span className="card__sub">{recurring.length} tratos recurrentes</span>
+          </div>
+          <div className="card__b">
+            <div className="saas-grid">
+              <button type="button" className="saas-kpi saas-kpi--clickable" onClick={() => setKpiDetail("mrr")}>
+                <small>MRR estimado <Icon name="external" size={9} style={{ verticalAlign: "middle", color: "var(--fg-4)", marginLeft: 4 }} /><InfoTip formula="ARR total / 12" purpose="Ingreso recurrente mensual base de los clientes activos." /></small>
+                <b>{fmtMoney(totalMRR, currency)}</b>
+              </button>
+              <button type="button" className="saas-kpi saas-kpi--clickable" onClick={() => setKpiDetail("new_arr")}>
+                <small>New ARR ganado <Icon name="external" size={9} style={{ verticalAlign: "middle", color: "var(--fg-4)", marginLeft: 4 }} /><InfoTip formula="Σ ARR de contratos recurrentes ganados en los últimos 90 días" purpose="Crecimiento reciente de ingreso recurrente (último trimestre)." /></small>
+                <b style={{ color: "var(--success)" }}>{fmtMoney(newARR, currency)}</b>
+              </button>
+              <button type="button" className="saas-kpi saas-kpi--clickable" onClick={() => setKpiDetail("pipeline_arr_w")}>
+                <small>Pipeline ARR (w) <Icon name="external" size={9} style={{ verticalAlign: "middle", color: "var(--fg-4)", marginLeft: 4 }} /><InfoTip formula="Σ (ARR × probabilidad) de tratos recurrentes abiertos" purpose="ARR esperado del pipeline, ponderado por la chance de cierre." /></small>
+                <b>{fmtMoney(pipelineARR, currency)}</b>
+              </button>
+              <button type="button" className="saas-kpi saas-kpi--clickable" onClick={() => setKpiDetail("net_retention")}>
+                <small>Net retention <Icon name="external" size={9} style={{ verticalAlign: "middle", color: "var(--fg-4)", marginLeft: 4 }} /><InfoTip formula="(ARR inicial + expansión − churn) / ARR inicial" purpose="Cuánto crece o cae el ingreso de tus clientes actuales (>100% = crecen sin sumar nuevos)." /></small>
+                <b>{nrr.nrr}%</b>
+              </button>
+              <button type="button" className="saas-kpi saas-kpi--clickable" onClick={() => setKpiDetail("cac_payback")}>
+                <small>CAC payback <Icon name="external" size={9} style={{ verticalAlign: "middle", color: "var(--fg-4)", marginLeft: 4 }} /><InfoTip formula="CAC / (MRR × margen bruto)" purpose="Meses que tarda un cliente en repagar su costo de adquisición." /></small>
+                <b>{cacPay.payback}m</b>
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* ───── AI Forecast · Pipeline weighted ───── */}
@@ -1456,52 +1485,8 @@ export default function DashboardRoute() {
         <StageFunnelCard funnel={funnel} currency={currency} onStage={(id) => setStageDetail(id)} />
       </div>
 
-      {/* ───── Métricas SaaS · Leaderboard ───── */}
-      <div className="dash__row" style={{ gridTemplateColumns: "1.4fr 1fr" }}>
-        <div className="card">
-          <div className="card__h">
-            <Icon name="dollar" size={14} style={{ color: "var(--success)" }} />
-            <span style={{ fontWeight: 600 }}>Métricas SaaS · ARR</span>
-            <span className="card__sub">{recurring.length} tratos recurrentes</span>
-          </div>
-          <div className="card__b">
-            <div className="saas-grid">
-              <button type="button" className="saas-kpi saas-kpi--clickable" onClick={() => setKpiDetail("arr_total")}>
-                <small>ARR total <Icon name="external" size={9} style={{ verticalAlign: "middle", color: "var(--fg-4)", marginLeft: 4 }} /><InfoTip formula="Σ ARR de los contratos ganados recurrentes" purpose="Ingreso anual recurrente total ya comprometido." /></small>
-                <b>{fmtMoney(totalARR, currency)}</b>
-              </button>
-              <button type="button" className="saas-kpi saas-kpi--clickable" onClick={() => setKpiDetail("mrr")}>
-                <small>MRR estimado <Icon name="external" size={9} style={{ verticalAlign: "middle", color: "var(--fg-4)", marginLeft: 4 }} /><InfoTip formula="ARR total / 12" purpose="Ingreso recurrente mensual base de los clientes activos." /></small>
-                <b>{fmtMoney(totalMRR, currency)}</b>
-              </button>
-              <button type="button" className="saas-kpi saas-kpi--clickable" onClick={() => setKpiDetail("new_arr")}>
-                <small>New ARR ganado <Icon name="external" size={9} style={{ verticalAlign: "middle", color: "var(--fg-4)", marginLeft: 4 }} /><InfoTip formula="Σ ARR de contratos recurrentes ganados en los últimos 90 días" purpose="Crecimiento reciente de ingreso recurrente (último trimestre)." /></small>
-                <b style={{ color: "var(--success)" }}>{fmtMoney(newARR, currency)}</b>
-              </button>
-              <button type="button" className="saas-kpi saas-kpi--clickable" onClick={() => setKpiDetail("pipeline_arr_w")}>
-                <small>Pipeline ARR (w) <Icon name="external" size={9} style={{ verticalAlign: "middle", color: "var(--fg-4)", marginLeft: 4 }} /><InfoTip formula="Σ (ARR × probabilidad) de tratos recurrentes abiertos" purpose="ARR esperado del pipeline, ponderado por la chance de cierre." /></small>
-                <b>{fmtMoney(pipelineARR, currency)}</b>
-              </button>
-              <button type="button" className="saas-kpi saas-kpi--clickable" onClick={() => setKpiDetail("net_retention")}>
-                <small>Net retention <Icon name="external" size={9} style={{ verticalAlign: "middle", color: "var(--fg-4)", marginLeft: 4 }} /><InfoTip formula="(ARR inicial + expansión − churn) / ARR inicial" purpose="Cuánto crece o cae el ingreso de tus clientes actuales (>100% = crecen sin sumar nuevos)." /></small>
-                <b>{nrr.nrr}%</b>
-              </button>
-              <button type="button" className="saas-kpi saas-kpi--clickable" onClick={() => setKpiDetail("logo_churn")}>
-                <small>Logo churn <Icon name="external" size={9} style={{ verticalAlign: "middle", color: "var(--fg-4)", marginLeft: 4 }} /><InfoTip formula="Clientes solo-perdidos / (ganados + solo-perdidos)" purpose="% de cuentas que se dieron de baja (rotación de logos)." /></small>
-                <b>{churn.churn}%</b>
-              </button>
-              <button type="button" className="saas-kpi saas-kpi--clickable" onClick={() => setKpiDetail("cac_payback")}>
-                <small>CAC payback <Icon name="external" size={9} style={{ verticalAlign: "middle", color: "var(--fg-4)", marginLeft: 4 }} /><InfoTip formula="CAC / (MRR × margen bruto)" purpose="Meses que tarda un cliente en repagar su costo de adquisición." /></small>
-                <b>{cacPay.payback}m</b>
-              </button>
-              <button type="button" className="saas-kpi saas-kpi--clickable" onClick={() => setKpiDetail("ltv_cac")}>
-                <small>LTV / CAC <Icon name="external" size={9} style={{ verticalAlign: "middle", color: "var(--fg-4)", marginLeft: 4 }} /><InfoTip formula="LTV / CAC  (LTV = ARPA × margen / churn mensual)" purpose="Cuántas veces recuperás lo invertido en captar un cliente (sano ≥ 3×)." /></small>
-                <b>{ltvCac.ratio}x</b>
-              </button>
-            </div>
-          </div>
-        </div>
-
+      {/* ───── Leaderboard ───── */}
+      <div className="dash__row" style={{ gridTemplateColumns: "1fr" }}>
         <div className="card">
           <div className="card__h">
             <Icon name="users" size={14} />

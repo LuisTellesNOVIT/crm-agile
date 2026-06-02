@@ -4804,7 +4804,7 @@ a.nav-item.is-active { color: var(--fg); }
 }
 
 .saas-grid {
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px;
 }
 .saas-kpi {
   padding: 10px;
