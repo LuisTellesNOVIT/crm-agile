@@ -5703,6 +5703,25 @@ textarea.emp__input { resize: vertical; }
   padding: 10px 20px; font-size: var(--fs-sm); color: var(--fg-2);
   border-bottom: 1px solid var(--border-2); background: var(--bg);
 }
+.seq-tabs__label { font-size: 11.5px; color: var(--fg-3); font-weight: 500; margin-right: 2px; white-space: nowrap; }
+.seq-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.seq-tab {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--border); border-radius: 999px;
+  background: var(--bg-2); color: var(--fg-2);
+  padding: 5px 13px; font-family: inherit; font-size: 12.5px; font-weight: 600;
+  cursor: pointer; transition: all 0.12s ease; white-space: nowrap;
+}
+.seq-tab__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c); flex-shrink: 0; }
+.seq-tab:hover { border-color: var(--c); color: var(--fg); }
+.seq-tab.is-active { color: #fff; background: var(--c); border-color: var(--c); }
+.seq-tab.is-active .seq-tab__dot { background: #fff; }
+.seq-head {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 12px 20px; border-bottom: 1px solid var(--border-2); background: var(--bg);
+}
+.seq-head__name { font-weight: 700; font-size: 15px; letter-spacing: -0.01em; }
+.seq-head__desc { flex-basis: 100%; font-size: var(--fs-sm); color: var(--fg-3); margin-top: 1px; }
 
 .seq-canvas {
   flex: 1; min-height: 0; overflow: auto;

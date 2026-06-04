@@ -211,22 +211,24 @@ export default function SequencesRoute() {
 
   return (
     <div className="seq-page">
-      {/* Toolbar: selector + estado + guardar */}
+      {/* Toolbar: pestañas de secuencias + estado + guardar */}
       <div className="seq-toolbar">
-        <div className="seq-select">
-          <Icon name="zap" size={13} style={{ color: "var(--accent)" }} />
-          <select value={selectedId ?? ""} onChange={(e) => setSelectedId(e.target.value)}>
-            {seqs.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.category ? `[${s.category}] ` : ""}{s.name}
-              </option>
-            ))}
-          </select>
-          <Icon name="chevron-down" size={12} style={{ color: "var(--fg-3)" }} />
+        <span className="seq-tabs__label">Elegí una secuencia:</span>
+        <div className="seq-tabs">
+          {seqs.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              className={`seq-tab ${s.id === selectedId ? "is-active" : ""}`}
+              style={{ ["--c" as string]: s.category ? CAT_COLOR[s.category] ?? "var(--fg-3)" : "var(--fg-3)" } as React.CSSProperties}
+              onClick={() => setSelectedId(s.id)}
+              title={s.name}
+            >
+              <span className="seq-tab__dot" />
+              {s.category ?? s.name}
+            </button>
+          ))}
         </div>
-        {cat && (
-          <span className="seq-cat" style={{ background: catColor }}>{cat}</span>
-        )}
         <span style={{ flex: 1 }} />
         <button
           type="button"
@@ -243,7 +245,13 @@ export default function SequencesRoute() {
         </button>
       </div>
 
-      {draft?.description && <div className="seq-desc">{draft.description}</div>}
+      {draft && (
+        <div className="seq-head">
+          {cat && <span className="seq-cat" style={{ background: catColor }}>{cat}</span>}
+          <span className="seq-head__name">{draft.name}</span>
+          {draft.description && <div className="seq-head__desc">{draft.description}</div>}
+        </div>
+      )}
 
       {/* Canvas tipo workflow */}
       <div className="seq-canvas" onClick={() => setMenuIdx(null)}>
