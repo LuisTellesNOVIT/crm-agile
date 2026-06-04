@@ -39,6 +39,15 @@ const CAT_COLOR: Record<string, string> = {
   Test: "#64748b",
 };
 
+/** Deduce la categoría de una plantilla por el prefijo de su nombre. */
+function tplCategory(name: string): string {
+  if (name.startsWith("grandes_")) return "Grande";
+  if (name.startsWith("consol_")) return "Consolidación";
+  if (name.startsWith("regular_")) return "Regular";
+  if (name.startsWith("test_")) return "Test";
+  return "Otros";
+}
+
 export async function loader({ request }: LoaderFunctionArgs) {
   await requireUser(request);
   const wss = await prisma.workspace.findMany({ where: { slug: { in: ["novit", "sharky"] } }, select: { id: true, slug: true } });
@@ -326,6 +335,7 @@ export default function SequencesRoute() {
           step={draft.steps[editing]}
           templates={templates}
           templateBody={bodyOf}
+          category={draft.category}
           onChangeStep={(p) => patch((d) => Object.assign(d.steps[editing], p))}
           onChangeTemplate={setTpl}
           onClose={() => setEditing(null)}
@@ -339,6 +349,7 @@ function NodeEditor({
   step,
   templates,
   templateBody,
+  category,
   onChangeStep,
   onChangeTemplate,
   onClose,
@@ -346,6 +357,7 @@ function NodeEditor({
   step: Step;
   templates: Tpl[];
   templateBody: (name?: string) => string;
+  category: string | null;
   onChangeStep: (patch: Partial<Step>) => void;
   onChangeTemplate: (name: string, body: string) => void;
   onClose: () => void;
@@ -354,6 +366,15 @@ function NodeEditor({
   const isMsg = step.kind === "wa" || step.kind === "email";
   const channel = step.kind === "email" ? "email" : "wa";
   const tplOptions = templates.filter((t) => t.channel === channel);
+  // Agrupa las plantillas por categoría, con la del flujo actual primero.
+  const tplGroups = useMemo(() => {
+    const g: Record<string, Tpl[]> = {};
+    for (const t of tplOptions) (g[tplCategory(t.name)] ??= []).push(t);
+    const order = [category ?? "", "Grande", "Consolidación", "Regular", "Test", "Otros"].filter(
+      (v, i, a) => v && a.indexOf(v) === i,
+    );
+    return order.filter((c) => g[c]).map((c) => ({ label: c, items: g[c] }));
+  }, [tplOptions, category]);
 
   return (
     <div className="drawer-backdrop" onClick={onClose}>
@@ -416,8 +437,12 @@ function NodeEditor({
                 <span>Plantilla ({channel === "wa" ? "WhatsApp" : "Email"})</span>
                 <select value={step.templateKey ?? ""} onChange={(e) => onChangeStep({ templateKey: e.target.value || undefined })}>
                   <option value="">— sin plantilla —</option>
-                  {tplOptions.map((t) => (
-                    <option key={t.name} value={t.name}>{t.name}</option>
+                  {tplGroups.map((g) => (
+                    <optgroup key={g.label} label={g.label}>
+                      {g.items.map((t) => (
+                        <option key={t.name} value={t.name}>{t.name}</option>
+                      ))}
+                    </optgroup>
                   ))}
                 </select>
               </label>
