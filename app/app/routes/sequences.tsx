@@ -1,9 +1,8 @@
-import { useLoaderData, type LoaderFunctionArgs } from "react-router";
+import { useEffect, useMemo, useState } from "react";
+import { useLoaderData, useFetcher, useRevalidator, type LoaderFunctionArgs } from "react-router";
 import { prisma } from "../lib/db.server";
 import { requireUser } from "../lib/session.server";
 import { useAppStore } from "../lib/store";
-import { Card } from "../components/ui/Card";
-import { Chip } from "../components/ui/Chip";
 import { Icon, type IconName } from "../components/shell/Icon";
 
 type Step = {
@@ -23,22 +22,15 @@ type SeqDTO = {
   trigger: string | null;
   steps: Step[];
 };
+type Tpl = { name: string; channel: string; body: string };
 
-const NODE_ICON: Record<string, IconName> = {
-  trigger: "zap",
-  delay: "command",
-  wa: "chat",
-  email: "inbox",
-  branch: "filter",
-  exit: "check",
-};
-const NODE_COLOR: Record<string, string> = {
-  trigger: "var(--accent)",
-  delay: "var(--fg-3)",
-  wa: "var(--success)",
-  email: "var(--info)",
-  branch: "var(--warning)",
-  exit: "var(--danger)",
+const KIND: Record<string, { label: string; icon: IconName; color: string; addable?: boolean }> = {
+  trigger: { label: "Trigger", icon: "zap", color: "#2563eb" },
+  delay: { label: "Delay", icon: "clock", color: "#64748b", addable: true },
+  wa: { label: "WhatsApp", icon: "wa", color: "#16a34a", addable: true },
+  email: { label: "Email", icon: "mail", color: "#6366f1", addable: true },
+  branch: { label: "Condición", icon: "filter", color: "#7c3aed", addable: true },
+  exit: { label: "Exit", icon: "x", color: "#dc2626" },
 };
 const CAT_COLOR: Record<string, string> = {
   Grande: "#dc2626",
@@ -49,15 +41,12 @@ const CAT_COLOR: Record<string, string> = {
 
 export async function loader({ request }: LoaderFunctionArgs) {
   await requireUser(request);
-  const wss = await prisma.workspace.findMany({
-    where: { slug: { in: ["novit", "sharky"] } },
-    select: { id: true, slug: true },
-  });
+  const wss = await prisma.workspace.findMany({ where: { slug: { in: ["novit", "sharky"] } }, select: { id: true, slug: true } });
   const ids = wss.map((w) => w.id);
   const idToSlug = new Map(wss.map((w) => [w.id, w.slug]));
   const [seqs, tpls] = await Promise.all([
     prisma.sequence.findMany({ where: { workspaceId: { in: ids } }, orderBy: { name: "asc" } }),
-    prisma.template.findMany({ where: { workspaceId: { in: ids } }, select: { name: true, channel: true, body: true } }),
+    prisma.template.findMany({ where: { workspaceId: { in: ids } }, select: { name: true, channel: true, body: true, workspaceId: true } }),
   ]);
   const bySlug: Record<string, SeqDTO[]> = { novit: [], sharky: [] };
   for (const s of seqs) {
@@ -75,162 +64,383 @@ export async function loader({ request }: LoaderFunctionArgs) {
       steps,
     });
   }
-  const templates: Record<string, { channel: string; body: string }> = {};
-  for (const t of tpls) templates[t.name] = { channel: t.channel as unknown as string, body: t.body };
-  return { bySlug, templates };
+  const tplBySlug: Record<string, Tpl[]> = { novit: [], sharky: [] };
+  for (const t of tpls) {
+    const slug = idToSlug.get(t.workspaceId);
+    if (!slug) continue;
+    tplBySlug[slug].push({ name: t.name, channel: t.channel as unknown as string, body: t.body });
+  }
+  return { bySlug, tplBySlug };
 }
 
 export default function SequencesRoute() {
-  const { bySlug, templates } = useLoaderData<typeof loader>();
+  const { bySlug, tplBySlug } = useLoaderData<typeof loader>();
   const workspace = useAppStore((s) => s.workspace);
-  const seqs: SeqDTO[] =
-    workspace === "all"
-      ? [...(bySlug.novit ?? []), ...(bySlug.sharky ?? [])]
-      : bySlug[workspace] ?? bySlug.novit ?? [];
+  const slug = workspace === "all" ? "novit" : workspace;
+  const seqs: SeqDTO[] = bySlug[slug] ?? bySlug.novit ?? [];
+  const templates: Tpl[] = tplBySlug[slug] ?? tplBySlug.novit ?? [];
+  const tplBody = useMemo(() => new Map(templates.map((t) => [t.name, t.body])), [templates]);
+
+  const fetcher = useFetcher();
+  const revalidator = useRevalidator();
+
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<SeqDTO | null>(null);
+  const [tplEdits, setTplEdits] = useState<Record<string, string>>({});
+  const [dirty, setDirty] = useState(false);
+  const [editing, setEditing] = useState<number | null>(null);
+  const [menuIdx, setMenuIdx] = useState<number | null>(null);
+  const [adding, setAdding] = useState(false);
+
+  // default selection
+  useEffect(() => {
+    if (selectedId == null && seqs.length) setSelectedId(seqs[0].id);
+  }, [seqs, selectedId]);
+  // (re)load draft when selection changes
+  useEffect(() => {
+    const s = seqs.find((x) => x.id === selectedId);
+    if (s) {
+      setDraft(structuredClone(s));
+      setTplEdits({});
+      setDirty(false);
+      setEditing(null);
+      setMenuIdx(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
+  // after a successful save, refresh + clear dirty
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data && (fetcher.data as { ok?: boolean }).ok) {
+      setDirty(false);
+      setTplEdits({});
+      revalidator.revalidate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetcher.state, fetcher.data]);
+
+  function patch(fn: (d: SeqDTO) => void) {
+    setDraft((d) => {
+      if (!d) return d;
+      const nd = structuredClone(d);
+      fn(nd);
+      return nd;
+    });
+    setDirty(true);
+  }
+  function setTpl(name: string, body: string) {
+    setTplEdits((e) => ({ ...e, [name]: body }));
+    setDirty(true);
+  }
+  function bodyOf(name?: string): string {
+    if (!name) return "";
+    return tplEdits[name] ?? tplBody.get(name) ?? "";
+  }
+
+  function save() {
+    if (!draft) return;
+    const nodes = { category: draft.category, description: draft.description, trigger: draft.trigger, steps: draft.steps };
+    const templatesPayload = Object.entries(tplEdits).map(([name, body]) => ({ name, body }));
+    fetcher.submit(
+      {
+        id: draft.id,
+        nodes: JSON.stringify(nodes),
+        active: String(draft.active),
+        name: draft.name,
+        templates: JSON.stringify(templatesPayload),
+      },
+      { method: "post", action: "/api/sequence-update" },
+    );
+  }
+  function toggleActive() {
+    if (!draft) return;
+    const next = !draft.active;
+    setDraft((d) => (d ? { ...d, active: next } : d));
+    fetcher.submit({ id: draft.id, active: String(next) }, { method: "post", action: "/api/sequence-update" });
+  }
+
+  function moveNode(idx: number, dir: -1 | 1) {
+    patch((d) => {
+      const j = idx + dir;
+      if (j < 0 || j >= d.steps.length) return;
+      [d.steps[idx], d.steps[j]] = [d.steps[j], d.steps[idx]];
+    });
+    setMenuIdx(null);
+  }
+  function deleteNode(idx: number) {
+    patch((d) => d.steps.splice(idx, 1));
+    setMenuIdx(null);
+  }
+  function addNode(kind: string) {
+    const defaults: Record<string, Step> = {
+      wa: { kind: "wa", title: "WhatsApp · Nuevo mensaje", body: "Mensaje al cliente", to: "client" },
+      email: { kind: "email", title: "Email · Nuevo", body: "Email al cliente", to: "client" },
+      delay: { kind: "delay", title: "Esperar 1 día", body: "Si no responde, continuar", delayDays: 1 },
+      branch: { kind: "branch", title: "¿Respondió?", body: "Exit si responde" },
+    };
+    const step = defaults[kind];
+    if (!step) return;
+    patch((d) => {
+      const exitIdx = d.steps.findIndex((s) => s.kind === "exit");
+      if (exitIdx >= 0) d.steps.splice(exitIdx, 0, step);
+      else d.steps.push(step);
+    });
+    setAdding(false);
+  }
+
+  if (!seqs.length) {
+    return (
+      <div style={{ padding: "20px 24px" }}>
+        <h1 style={{ fontSize: "var(--fs-xl)", fontWeight: 600 }}>Secuencias</h1>
+        <p style={{ color: "var(--fg-3)", marginTop: 8 }}>No hay secuencias en este grupo.</p>
+      </div>
+    );
+  }
+
+  const cat = draft?.category;
+  const catColor = cat ? CAT_COLOR[cat] ?? "var(--fg-3)" : "var(--fg-3)";
+  const saving = fetcher.state !== "idle";
 
   return (
-    <div style={{ padding: "20px 24px", display: "grid", gap: 16, maxWidth: 1100 }}>
-      <header>
-        <h1 style={{ fontSize: "var(--fs-xl)", fontWeight: 600, letterSpacing: "-0.01em" }}>Secuencias</h1>
-        <p style={{ color: "var(--fg-3)", fontSize: "var(--fs-sm)" }}>
-          Flujos automatizados por categoría de cliente — trigger → delay → mensaje → condición → exit.
-          Cada paso de WhatsApp/Email usa una <b>plantilla</b> reutilizable.
-        </p>
-      </header>
+    <div className="seq-page">
+      {/* Toolbar: selector + estado + guardar */}
+      <div className="seq-toolbar">
+        <div className="seq-select">
+          <Icon name="zap" size={13} style={{ color: "var(--accent)" }} />
+          <select value={selectedId ?? ""} onChange={(e) => setSelectedId(e.target.value)}>
+            {seqs.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.category ? `[${s.category}] ` : ""}{s.name}
+              </option>
+            ))}
+          </select>
+          <Icon name="chevron-down" size={12} style={{ color: "var(--fg-3)" }} />
+        </div>
+        {cat && (
+          <span className="seq-cat" style={{ background: catColor }}>{cat}</span>
+        )}
+        <span style={{ flex: 1 }} />
+        <button
+          type="button"
+          className={`seq-toggle ${draft?.active ? "is-on" : ""}`}
+          onClick={toggleActive}
+          disabled={saving}
+          title={draft?.active ? "Pausar secuencia" : "Activar secuencia"}
+        >
+          <span className="seq-toggle__dot" />
+          {draft?.active ? "Activa" : "Pausada"}
+        </button>
+        <button type="button" className="btn btn--primary" onClick={save} disabled={!dirty || saving}>
+          {saving ? "Guardando…" : dirty ? "Guardar cambios" : "Guardado"}
+        </button>
+      </div>
 
-      {seqs.length === 0 && (
-        <Card>
-          <Card.Body>
-            <div style={{ padding: 20, textAlign: "center", color: "var(--fg-3)" }}>
-              No hay secuencias en este grupo todavía.
-            </div>
-          </Card.Body>
-        </Card>
-      )}
+      {draft?.description && <div className="seq-desc">{draft.description}</div>}
 
-      {seqs.map((seq) => {
-        const catColor = seq.category ? CAT_COLOR[seq.category] ?? "var(--fg-3)" : "var(--fg-3)";
-        return (
-          <Card key={seq.id}>
-            <Card.Header
-              label="Secuencia"
-              sub={seq.active ? <Chip tone="success" dot>Activa</Chip> : <Chip dot>Desactivada</Chip>}
-            >
-              {seq.category && (
-                <span
-                  style={{
-                    fontSize: 10,
-                    fontFamily: "var(--font-mono)",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.06em",
-                    color: "#fff",
-                    background: catColor,
-                    padding: "2px 7px",
-                    borderRadius: 5,
-                    marginRight: 8,
+      {/* Canvas tipo workflow */}
+      <div className="seq-canvas" onClick={() => setMenuIdx(null)}>
+        <div className="seq-flow">
+          {draft?.steps.map((step, i) => {
+            const meta = KIND[step.kind] ?? KIND.delay;
+            return (
+              <div key={i}>
+                <div
+                  className={`seq-node ${step.kind === "exit" ? "seq-node--exit" : ""}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEditing(i);
                   }}
                 >
-                  {seq.category}
-                </span>
-              )}
-              <span style={{ fontWeight: 600, fontSize: "var(--fs-sm)" }}>{seq.name}</span>
-            </Card.Header>
-            <Card.Body>
-              {seq.description && (
-                <p style={{ fontSize: "var(--fs-sm)", color: "var(--fg-2)", margin: "0 0 4px" }}>{seq.description}</p>
-              )}
-              {seq.trigger && (
-                <p style={{ fontSize: 11.5, color: "var(--fg-3)", margin: "0 0 14px" }}>
-                  <b style={{ color: "var(--fg-2)" }}>Disparador:</b> {seq.trigger}
-                </p>
-              )}
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {seq.steps.map((n, i) => (
-                  <SeqNode key={i} node={n} last={i === seq.steps.length - 1} templates={templates} />
-                ))}
+                  <div className="seq-node__head">
+                    <span className="seq-node__icon" style={{ background: meta.color }}>
+                      <Icon name={meta.icon} size={16} />
+                    </span>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div className="seq-node__kind">{meta.label}</div>
+                      <div className="seq-node__title">{step.title}</div>
+                    </div>
+                    <button
+                      type="button"
+                      className="seq-node__menu"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMenuIdx(menuIdx === i ? null : i);
+                      }}
+                    >
+                      <Icon name="more" size={16} />
+                    </button>
+                    {menuIdx === i && (
+                      <div className="seq-menu" onClick={(e) => e.stopPropagation()}>
+                        <button type="button" onClick={() => { setEditing(i); setMenuIdx(null); }}>Editar</button>
+                        <button type="button" onClick={() => moveNode(i, -1)} disabled={i === 0}>Subir</button>
+                        <button type="button" onClick={() => moveNode(i, 1)} disabled={i === draft.steps.length - 1}>Bajar</button>
+                        {step.kind !== "trigger" && step.kind !== "exit" && (
+                          <button type="button" className="is-danger" onClick={() => deleteNode(i)}>Eliminar</button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div className="seq-node__body">{step.body}</div>
+                  {(step.kind === "wa" || step.kind === "email") && (
+                    <div className="seq-node__meta">
+                      <span className={`seq-pill ${step.to === "internal" ? "is-internal" : "is-client"}`}>
+                        {step.to === "internal" ? "→ Equipo" : "→ Cliente"}
+                      </span>
+                      {step.templateKey && <span className="seq-tplref">📋 {step.templateKey}</span>}
+                    </div>
+                  )}
+                </div>
+                {i < draft.steps.length - 1 && <div className="seq-conn" />}
               </div>
-            </Card.Body>
-          </Card>
-        );
-      })}
+            );
+          })}
+
+          {/* Agregar paso */}
+          <div className="seq-conn" />
+          <div className="seq-add">
+            {!adding ? (
+              <button type="button" className="seq-add__btn" onClick={() => setAdding(true)}>
+                <Icon name="plus" size={14} /> Agregar paso
+              </button>
+            ) : (
+              <div className="seq-add__menu">
+                {Object.entries(KIND)
+                  .filter(([, m]) => m.addable)
+                  .map(([k, m]) => (
+                    <button key={k} type="button" onClick={() => addNode(k)} style={{ borderColor: m.color }}>
+                      <span className="seq-node__icon" style={{ background: m.color, width: 22, height: 22 }}>
+                        <Icon name={m.icon} size={12} />
+                      </span>
+                      {m.label}
+                    </button>
+                  ))}
+                <button type="button" className="seq-add__cancel" onClick={() => setAdding(false)}>Cancelar</button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Modal de edición de nodo */}
+      {editing != null && draft && draft.steps[editing] && (
+        <NodeEditor
+          step={draft.steps[editing]}
+          templates={templates}
+          templateBody={bodyOf}
+          onChangeStep={(p) => patch((d) => Object.assign(d.steps[editing], p))}
+          onChangeTemplate={setTpl}
+          onClose={() => setEditing(null)}
+        />
+      )}
     </div>
   );
 }
 
-function SeqNode({
-  node,
-  last,
+function NodeEditor({
+  step,
   templates,
+  templateBody,
+  onChangeStep,
+  onChangeTemplate,
+  onClose,
 }: {
-  node: Step;
-  last: boolean;
-  templates: Record<string, { channel: string; body: string }>;
+  step: Step;
+  templates: Tpl[];
+  templateBody: (name?: string) => string;
+  onChangeStep: (patch: Partial<Step>) => void;
+  onChangeTemplate: (name: string, body: string) => void;
+  onClose: () => void;
 }) {
-  const color = NODE_COLOR[node.kind] ?? "var(--fg-3)";
-  const icon = NODE_ICON[node.kind] ?? "command";
-  const tpl = node.templateKey ? templates[node.templateKey] : undefined;
+  const meta = KIND[step.kind] ?? KIND.delay;
+  const isMsg = step.kind === "wa" || step.kind === "email";
+  const channel = step.kind === "email" ? "email" : "wa";
+  const tplOptions = templates.filter((t) => t.channel === channel);
+
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "32px 1fr", gap: 10, alignItems: "stretch" }}>
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-        <div
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: 6,
-            background: color,
-            color: "#fff",
-            display: "grid",
-            placeItems: "center",
-            flexShrink: 0,
-          }}
-        >
-          <Icon name={icon} size={14} />
-        </div>
-        {!last && <div style={{ flex: 1, width: 2, background: "var(--border-2)", marginTop: 2 }} />}
-      </div>
-      <div style={{ paddingBottom: last ? 0 : 10, minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <span style={{ fontWeight: 600, fontSize: "var(--fs-sm)" }}>{node.title}</span>
-          {node.to && (
-            <span
-              style={{
-                fontSize: 9.5,
-                fontFamily: "var(--font-mono)",
-                textTransform: "uppercase",
-                letterSpacing: "0.05em",
-                padding: "1px 6px",
-                borderRadius: 4,
-                background: node.to === "client" ? "var(--accent-soft)" : "rgba(220,38,38,0.10)",
-                color: node.to === "client" ? "var(--accent)" : "var(--danger)",
-                border: `1px solid ${node.to === "client" ? "var(--accent-border)" : "rgba(220,38,38,0.25)"}`,
-              }}
-            >
-              {node.to === "client" ? "→ Cliente" : "→ Equipo interno"}
-            </span>
+    <div className="drawer-backdrop" onClick={onClose}>
+      <div className="seq-modal" onClick={(e) => e.stopPropagation()}>
+        <header>
+          <span className="seq-node__icon" style={{ background: meta.color }}>
+            <Icon name={meta.icon} size={15} />
+          </span>
+          <div>
+            <div style={{ fontSize: 10, fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".06em", color: "var(--fg-3)" }}>
+              {meta.label}
+            </div>
+            <div style={{ fontWeight: 600 }}>Editar paso</div>
+          </div>
+          <button type="button" className="btn btn--icon" onClick={onClose} style={{ marginLeft: "auto" }}>
+            <Icon name="x" size={14} />
+          </button>
+        </header>
+
+        <div className="seq-modal__body">
+          <label className="seq-field">
+            <span>Título</span>
+            <input value={step.title} onChange={(e) => onChangeStep({ title: e.target.value })} />
+          </label>
+          <label className="seq-field">
+            <span>Descripción (lo que se ve en la tarjeta)</span>
+            <input value={step.body} onChange={(e) => onChangeStep({ body: e.target.value })} />
+          </label>
+
+          {step.kind === "delay" && (
+            <label className="seq-field">
+              <span>Esperar (días)</span>
+              <input
+                type="number"
+                min={0}
+                value={step.delayDays ?? 1}
+                onChange={(e) => onChangeStep({ delayDays: Math.max(0, parseInt(e.target.value || "0", 10)) })}
+              />
+            </label>
+          )}
+
+          {isMsg && (
+            <>
+              <div className="seq-field">
+                <span>Destinatario</span>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {(["client", "internal"] as const).map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      className={`seq-seg ${step.to === t ? "is-on" : ""}`}
+                      onClick={() => onChangeStep({ to: t })}
+                    >
+                      {t === "client" ? "Cliente" : "Equipo interno"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <label className="seq-field">
+                <span>Plantilla ({channel === "wa" ? "WhatsApp" : "Email"})</span>
+                <select value={step.templateKey ?? ""} onChange={(e) => onChangeStep({ templateKey: e.target.value || undefined })}>
+                  <option value="">— sin plantilla —</option>
+                  {tplOptions.map((t) => (
+                    <option key={t.name} value={t.name}>{t.name}</option>
+                  ))}
+                </select>
+              </label>
+              {step.templateKey && (
+                <label className="seq-field">
+                  <span>
+                    Texto de la plantilla <i style={{ color: "var(--fg-4)" }}>(usa {"{{nombre}}"}, {"{{empresa}}"}, {"{{trato}}"}, {"{{valor}}"}, {"{{ejecutivo}}"}, {"{{industria}}"})</i>
+                  </span>
+                  <textarea
+                    rows={5}
+                    value={templateBody(step.templateKey)}
+                    onChange={(e) => onChangeTemplate(step.templateKey!, e.target.value)}
+                  />
+                  <i style={{ fontSize: 11, color: "var(--fg-4)" }}>Editás la plantilla compartida — afecta a todos los pasos que la usan.</i>
+                </label>
+              )}
+            </>
           )}
         </div>
-        <div style={{ fontSize: 12, color: "var(--fg-3)", marginTop: 2 }}>{node.body}</div>
-        {node.templateKey && (
-          <div
-            style={{
-              marginTop: 6,
-              padding: "6px 9px",
-              background: "var(--bg-2)",
-              border: "1px solid var(--border-2)",
-              borderRadius: 6,
-              fontSize: 11.5,
-            }}
-          >
-            <span style={{ fontFamily: "var(--font-mono)", color: "var(--fg-3)" }}>
-              Plantilla: <b style={{ color: "var(--fg-2)" }}>{node.templateKey}</b>
-            </span>
-            {tpl && (
-              <div style={{ color: "var(--fg-2)", marginTop: 3, lineHeight: 1.4, whiteSpace: "pre-wrap" }}>
-                {tpl.body.length > 160 ? tpl.body.slice(0, 159) + "…" : tpl.body}
-              </div>
-            )}
-          </div>
-        )}
+
+        <footer>
+          <button type="button" className="btn btn--primary" onClick={onClose}>Listo</button>
+        </footer>
       </div>
     </div>
   );
