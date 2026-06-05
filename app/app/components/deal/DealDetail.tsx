@@ -1089,7 +1089,7 @@ function DealEditModal({
             </label>
             {group !== initialGroup && (
               <div className="deal-edit-modal__hint-move">
-                ⚠ Al guardar, el trato{selectedCompany && (selectedCompany._ws ?? "novit") !== group ? <> y la empresa <b>{selectedCompany.name}</b></> : ""} se {selectedCompany && (selectedCompany._ws ?? "novit") !== group ? "moverán" : "moverá"} al grupo <b>{group.toUpperCase()}</b>.
+                ⚠ Al guardar, el trato{selectedCompany && (selectedCompany._ws ?? "novit") !== group ? <> y la empresa <b>{selectedCompany.name}</b></> : ""} se {selectedCompany && (selectedCompany._ws ?? "novit") !== group ? "moverán" : "moverá"} al grupo <b>{group.toUpperCase()}</b>. El <b>owner</b> se reasignará a un usuario de {group.toUpperCase()}.
               </div>
             )}
           </div>

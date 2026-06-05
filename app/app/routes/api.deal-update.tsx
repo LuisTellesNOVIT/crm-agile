@@ -205,6 +205,7 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   // ─── ownerId (validar que pertenece al workspace destino) ──────
+  const isMoving = targetWsId !== existing.workspaceId;
   const ownerId = form.get("ownerId");
   if (ownerId != null && String(ownerId).trim()) {
     const id = String(ownerId);
@@ -213,7 +214,17 @@ export async function action({ request }: ActionFunctionArgs) {
       select: { workspaceId: true },
     });
     if (!u || u.workspaceId !== targetWsId) {
-      errors.push("ownerId no pertenece al grupo del deal");
+      // Si NO estamos moviendo de grupo, el owner debe pertenecer al grupo del deal.
+      // Si SÍ estamos moviendo, el owner del grupo origen no aplica: lo reasignamos
+      // al destino (al admin que ejecuta si pertenece, sino al primer usuario del destino).
+      if (!isMoving) {
+        errors.push("El owner no pertenece al grupo del trato");
+      } else {
+        const meInTarget = me.workspaceId === targetWsId ? me.id : null;
+        const fallback = meInTarget
+          ?? (await prisma.user.findFirst({ where: { workspaceId: targetWsId }, orderBy: { createdAt: "asc" }, select: { id: true } }))?.id;
+        if (fallback) data.ownerId = fallback;
+      }
     } else {
       data.ownerId = id;
     }
