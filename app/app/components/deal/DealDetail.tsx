@@ -9,13 +9,42 @@ import { fmtMoneyFull, daysFromToday } from "../../lib/format";
 import { templates } from "../../lib/mock/rich";
 import { tagColor } from "../../lib/tags";
 import { TagsEditor } from "../ui/TagsEditor";
-import type { ChannelKind, CompanyLite, Deal, OwnersByKey, Stage } from "../../lib/types";
+import type { ChannelKind, CompanyLite, Deal, OwnersByKey, SeqOption, Stage } from "../../lib/types";
 
 const TABS = [
   { id: "detail", label: "Detalle" },
   { id: "files", label: "Archivos" },
   { id: "compose", label: "Componer" },
 ];
+
+/** Fila de chips de etapa — selección rápida (detalle + modal de edición). */
+function StageChips({
+  stages,
+  currentId,
+  onChange,
+}: {
+  stages: Stage[];
+  currentId: string;
+  onChange: (id: string) => void;
+}) {
+  return (
+    <div className="stage-chips">
+      {stages.map((s) => (
+        <button
+          key={s.id}
+          type="button"
+          className={`stage-chip ${s.id === currentId ? "is-active" : ""}`.trim()}
+          style={{ ["--sc" as string]: s.color } as React.CSSProperties}
+          onClick={() => onChange(s.id)}
+          aria-pressed={s.id === currentId}
+        >
+          <span className="stage-chip__dot" />
+          {s.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export function DealDetail({ dealId, onClose }: { dealId: string; onClose: () => void }) {
   const ws = useActiveWorkspace();
@@ -25,6 +54,8 @@ export function DealDetail({ dealId, onClose }: { dealId: string; onClose: () =>
   const [editModalOpen, setEditModalOpen] = useState(false);
   const deleteFetcher = useFetcher<{ ok?: boolean; error?: string }>();
   const deleting = deleteFetcher.state !== "idle";
+  const stageFetcher = useFetcher();
+  const pendingStage = stageFetcher.formData ? String(stageFetcher.formData.get("stage")) : null;
 
   const deal = ws.deals.find((d) => d.id === dealId);
 
@@ -64,6 +95,8 @@ export function DealDetail({ dealId, onClose }: { dealId: string; onClose: () =>
 
   const stage = ws.stages.find((s) => s.id === deal.stage);
   const owner = ws.owners[deal.owner];
+  const changeStage = (newStage: string) =>
+    stageFetcher.submit({ id: deal.id, stage: newStage }, { method: "POST", action: "/api/deal-update" });
 
   return (
     <div className="deal-detail">
@@ -116,6 +149,17 @@ export function DealDetail({ dealId, onClose }: { dealId: string; onClose: () =>
         </div>
       )}
 
+      {/* Estado del lead: todas las etapas en línea, clic = guarda automáticamente */}
+      <div className="deal-detail__stages">
+        <span className="deal-detail__stages-label">Estado</span>
+        <StageChips
+          stages={ws.stages}
+          currentId={pendingStage ?? deal.stage}
+          onChange={changeStage}
+        />
+        {stageFetcher.state !== "idle" && <span className="deal-detail__stages-saving">guardando…</span>}
+      </div>
+
       <Tabs items={TABS} active={tab} onChange={setTab} />
 
       <div className="deal-detail__body">
@@ -129,6 +173,7 @@ export function DealDetail({ dealId, onClose }: { dealId: string; onClose: () =>
             stages={ws.stages}
             owners={ws.owners}
             companies={ws.companies}
+            sequences={ws.sequences}
           />
         )}
         {tab === "files" && <FilesPane deal={deal} />}
@@ -157,6 +202,7 @@ function DetailPane({
   stages,
   owners,
   companies,
+  sequences,
 }: {
   deal: Deal;
   stage: Stage | undefined;
@@ -166,13 +212,9 @@ function DetailPane({
   stages: Stage[];
   owners: OwnersByKey;
   companies: CompanyLite[];
+  sequences: SeqOption[];
 }) {
   const fetcher = useFetcher();
-  // Mientras el fetcher está en vuelo, reflejamos el stage optimista localmente.
-  const pendingStage = fetcher.formData
-    ? (String(fetcher.formData.get("stage")) as Stage["id"])
-    : null;
-  const visibleStage = pendingStage ?? deal.stage;
   const daysToClose = daysFromToday(deal.estimatedCloseAt, today);
   const summary = useMemo(() => {
     const trend = deal.ai >= 70 ? "saludable" : deal.ai >= 50 ? "en riesgo" : "estancado";
@@ -208,20 +250,25 @@ function DetailPane({
       <Card>
         <Card.Header label="Campos" sub="click para editar inline" />
         <Card.Body>
-          <FieldRow k="Stage" v={
+          <FieldRow k="Secuencia" v={
             <select
               className="deal-detail__select"
-              value={visibleStage}
+              value={deal.sequence ?? ""}
               disabled={fetcher.state !== "idle"}
+              title="Secuencia de seguimiento asignada a este lead"
               onChange={(e) =>
                 fetcher.submit(
-                  { id: deal.id, stage: e.target.value },
+                  { id: deal.id, sequenceId: e.target.value },
                   { method: "POST", action: "/api/deal-update" },
                 )
               }
             >
-              {stages.map((s) => (
-                <option key={s.id} value={s.id}>{s.label}</option>
+              <option value="">— Sin secuencia —</option>
+              {sequences.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {(s.category ? s.category + " · " : "") + s.name}
+                  {s.active ? "" : " (pausada)"}
+                </option>
               ))}
             </select>
           } />
@@ -784,8 +831,9 @@ function DealEditModal({
   const initialGroup = (currentCompany?._ws ?? deal._ws ?? "novit") as "novit" | "sharky";
   const [group, setGroup] = useState<"novit" | "sharky">(initialGroup);
 
-  // Empresas filtradas por grupo seleccionado
-  const companiesInGroup = allCompanies.filter((c) => (c._ws ?? "novit") === group);
+  // Empresas de cada grupo (el selector muestra ambas, agrupadas)
+  const novitCompanies = allCompanies.filter((c) => (c._ws ?? "novit") === "novit");
+  const sharkyCompanies = allCompanies.filter((c) => (c._ws ?? "novit") === "sharky");
   // Owners del grupo seleccionado
   const ownerOptions = Object.entries(owners)
     .map(([initials, o]) => ({ id: o.id ?? "", label: o.name + " · " + initials }))
@@ -815,6 +863,8 @@ function DealEditModal({
   const onCompanyChange = (id: string) => {
     setCompanyId(id);
     const c = allCompanies.find((x) => x.id === id);
+    // El grupo del trato sigue a la empresa elegida.
+    if (c?._ws) setGroup(c._ws as "novit" | "sharky");
     setCoRuc(c?.ruc ?? "");
     setCoRazon(c?.razonSocial ?? "");
     setCoComercial(c?.nombreComercial ?? "");
@@ -834,11 +884,9 @@ function DealEditModal({
     setCoEmail(c?.email ?? "");
   };
 
-  // Al cambiar de grupo, resetear empresa al primero del grupo destino
+  // Cambiar el grupo = MOVER la empresa seleccionada a ese grupo (se mantiene la empresa).
   const onGroupChange = (g: "novit" | "sharky") => {
     setGroup(g);
-    const first = allCompanies.find((c) => (c._ws ?? "novit") === g);
-    if (first && first.id !== companyId) onCompanyChange(first.id);
   };
 
   const handleSave = async () => {
@@ -893,9 +941,11 @@ function DealEditModal({
       const j2 = await r2.json();
       if (!j2.ok) throw new Error(j2.error || "Error al guardar el trato");
 
-      // 3) Refrescar loaders + cerrar
+      // 3) Cerrar de inmediato y refrescar loaders en segundo plano.
+      //    (Si el trato se movió de grupo, ya no está en el workspace activo;
+      //     cerrar primero evita el flash de "no encontrado".)
+      onClose();
       revalidator.revalidate();
-      setTimeout(onClose, 120);
     } catch (e) {
       setError((e as Error).message);
       setSaving(false);
@@ -916,6 +966,12 @@ function DealEditModal({
         </header>
 
         <div className="deal-edit-modal__body">
+          {/* ─── Etapa (selección rápida con chips) ─── */}
+          <div className="deal-edit-modal__section">
+            <h3>Etapa</h3>
+            <StageChips stages={stages} currentId={stage} onChange={setStage} />
+          </div>
+
           {/* ─── Datos comerciales ─── */}
           <div className="deal-edit-modal__section">
             <h3>Datos comerciales</h3>
@@ -967,27 +1023,18 @@ function DealEditModal({
               </label>
             </div>
 
-            <div className="deal-edit-modal__row">
-              <label className="deal-edit-modal__field" style={{ flex: 1 }}>
-                <span>Stage</span>
-                <select value={stage} onChange={(e) => setStage(e.target.value)}>
-                  {stages.map((s) => (
-                    <option key={s.id} value={s.id}>{s.label}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="deal-edit-modal__field" style={{ flex: 1 }}>
-                <span>Probability % <small>(override)</small></span>
-                <input
-                  type="number"
-                  value={probPct}
-                  onChange={(e) => setProbPct(Math.max(0, Math.min(100, parseInt(e.target.value || "0", 10))))}
-                  min={0}
-                  max={100}
-                  className="mono"
-                />
-              </label>
-            </div>
+            <label className="deal-edit-modal__field">
+              <span>Probability % <small>(override · la etapa se elige con los chips de arriba)</small></span>
+              <input
+                type="number"
+                value={probPct}
+                onChange={(e) => setProbPct(Math.max(0, Math.min(100, parseInt(e.target.value || "0", 10))))}
+                min={0}
+                max={100}
+                className="mono"
+                style={{ maxWidth: 160 }}
+              />
+            </label>
 
             <label className="deal-edit-modal__field">
               <span>Tags / palabras clave</span>
@@ -1022,16 +1069,27 @@ function DealEditModal({
               </label>
             </div>
             <label className="deal-edit-modal__field">
-              <span>Empresa <small>({companiesInGroup.length} en {group.toUpperCase()})</small></span>
+              <span>Empresa <small>(elegí de cualquier grupo · el grupo del trato se ajusta solo)</small></span>
               <select value={companyId} onChange={(e) => onCompanyChange(e.target.value)}>
-                {companiesInGroup.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}{c.ruc ? ` · ${c.ruc}` : ""}</option>
-                ))}
+                {(isAdmin || initialGroup === "novit") && (
+                  <optgroup label="NOVIT">
+                    {novitCompanies.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}{c.ruc ? ` · ${c.ruc}` : ""}</option>
+                    ))}
+                  </optgroup>
+                )}
+                {(isAdmin || initialGroup === "sharky") && (
+                  <optgroup label="SHARKY">
+                    {sharkyCompanies.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}{c.ruc ? ` · ${c.ruc}` : ""}</option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
             </label>
             {group !== initialGroup && (
               <div className="deal-edit-modal__hint-move">
-                ⚠ Al guardar, el trato y la empresa <b>{selectedCompany?.name}</b> se moverán al grupo <b>{group.toUpperCase()}</b>.
+                ⚠ Al guardar, el trato{selectedCompany && (selectedCompany._ws ?? "novit") !== group ? <> y la empresa <b>{selectedCompany.name}</b></> : ""} se {selectedCompany && (selectedCompany._ws ?? "novit") !== group ? "moverán" : "moverá"} al grupo <b>{group.toUpperCase()}</b>.
               </div>
             )}
           </div>

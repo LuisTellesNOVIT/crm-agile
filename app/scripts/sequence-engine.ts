@@ -149,6 +149,27 @@ async function enroll(opts: { dealPublicId: string; sequenceName: string; testTa
   console.log(`✓ Enrolado "${deal.name}" en "${seq.name}"${opts.testTarget ? ` · PRUEBA → ${opts.testTarget}` : ""} · enrollment ${e.id}`);
 }
 
+function lastSentAt(log: unknown[]): Date | null {
+  for (let i = log.length - 1; i >= 0; i--) {
+    const e = log[i] as { act?: string; at?: string };
+    if (e?.act === "sent" && e.at) return new Date(e.at);
+  }
+  return null;
+}
+/** ¿Hay un mensaje entrante del cliente después de `since`? */
+async function clientReplied(phone: string, since: Date): Promise<boolean> {
+  const digits = phone.replace(/\D/g, "");
+  if (!digits) return false;
+  const tail = digits.slice(-9);
+  const msgs = await prisma.inboundMessage.findMany({
+    where: { chatType: "dm", at: { gt: since } },
+    select: { fromNumber: true },
+    orderBy: { at: "desc" },
+    take: 300,
+  });
+  return msgs.some((m) => m.fromNumber.endsWith(tail) || tail.endsWith(m.fromNumber.slice(-9)));
+}
+
 async function runDue(opts: { fast: boolean }) {
   const now = new Date();
   const due = await prisma.sequenceEnrollment.findMany({ where: { status: "active", nextFireAt: { lte: now } } });
@@ -160,6 +181,11 @@ async function runDue(opts: { fast: boolean }) {
     const seq = await prisma.sequence.findUnique({ where: { id: e.sequenceId } });
     if (!seq) {
       await prisma.sequenceEnrollment.update({ where: { id: e.id }, data: { status: "exited" } });
+      continue;
+    }
+    // Secuencia pausada → los inscritos esperan (salvo modo prueba, que siempre corre a tu número).
+    if (!seq.active && !e.testTarget) {
+      console.log(`⏸ ${seq.name}: pausada — inscrito …${e.dealId.slice(-6)} en espera`);
       continue;
     }
     const steps: Step[] = ((seq.nodes as Record<string, unknown>)?.steps as Step[]) ?? [];
@@ -202,12 +228,28 @@ async function runDue(opts: { fast: boolean }) {
         const pref = step.kind === "email" ? "✉️ (Email simulado por WhatsApp)\n" : "";
         await sendWa(target, pref + msg);
         console.log(`  ✅ ${step.title} ${toClient ? "[cliente]" : "[interno]"} → ${target}`);
-        log.push({ step: idx, act: "sent", to: target });
+        log.push({ step: idx, act: "sent", to: target, at: new Date().toISOString() });
         idx++;
         await new Promise((r) => setTimeout(r, 1000));
         continue;
       }
-      if (step.kind === "branch") { log.push({ step: idx, act: "branch-skip" }); idx++; continue; } // Fase 2: reply detection
+      if (step.kind === "branch") {
+        // ¿Respondió? — busca un entrante del cliente después del último envío
+        const phone = e.testTarget || dv?.clientPhone || "";
+        const since = lastSentAt(log) ?? e.createdAt;
+        const replied = phone ? await clientReplied(phone, since) : false;
+        if (replied) {
+          status = "exited";
+          log.push({ step: idx, act: "branch-replied-exit", at: new Date().toISOString() });
+          console.log(`  ↩ ${step.title}: el cliente respondió → exit`);
+          idx++;
+          break;
+        }
+        log.push({ step: idx, act: "branch-no-reply", at: new Date().toISOString() });
+        console.log(`  → ${step.title}: sin respuesta aún → continúa`);
+        idx++;
+        continue;
+      }
       if (step.kind === "exit") { status = "done"; log.push({ step: idx, act: "exit" }); idx++; break; }
       idx++;
     }

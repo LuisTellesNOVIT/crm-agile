@@ -8,5 +8,6 @@ export PATH="/usr/local/bin:/usr/local/opt/node/bin:/opt/homebrew/bin:/usr/bin:/
 export SEQ_CLIENT_SENDS="${SEQ_CLIENT_SENDS:-off}"
 cd "/Users/luistellesatto/code/crm-agile/app" || exit 1
 echo "── $(date '+%Y-%m-%d %H:%M:%S') · sequence-engine (clientSends=$SEQ_CLIENT_SENDS) ──"
+./node_modules/.bin/tsx scripts/wa-inbound.ts            # 0) registra respuestas entrantes
 ./node_modules/.bin/tsx scripts/sequence-engine.ts --auto-enroll
 ./node_modules/.bin/tsx scripts/sequence-engine.ts --run

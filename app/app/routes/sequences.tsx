@@ -23,6 +23,17 @@ type SeqDTO = {
   steps: Step[];
 };
 type Tpl = { name: string; channel: string; body: string };
+type DealLite = {
+  id: string;
+  publicId: string;
+  name: string;
+  value: number;
+  stage: string;
+  company: string;
+  tier: string | null;
+  phone: string | null;
+};
+type EnrollLite = { dealId: string; status: string; stepIndex: number; test: boolean; nextFireAt: string };
 
 const KIND: Record<string, { label: string; icon: IconName; color: string; addable?: boolean }> = {
   trigger: { label: "Trigger", icon: "zap", color: "#2563eb" },
@@ -37,6 +48,12 @@ const CAT_COLOR: Record<string, string> = {
   Consolidación: "#f59e0b",
   Regular: "#4f46e5",
   Test: "#64748b",
+};
+const STATUS: Record<string, { label: string; color: string }> = {
+  active: { label: "En curso", color: "#16a34a" },
+  done: { label: "Completada", color: "#2563eb" },
+  exited: { label: "Salió (respondió)", color: "#7c3aed" },
+  paused: { label: "Pausado", color: "#f59e0b" },
 };
 
 /** Deduce la categoría de una plantilla por el prefijo de su nombre. */
@@ -53,10 +70,29 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const wss = await prisma.workspace.findMany({ where: { slug: { in: ["novit", "sharky"] } }, select: { id: true, slug: true } });
   const ids = wss.map((w) => w.id);
   const idToSlug = new Map(wss.map((w) => [w.id, w.slug]));
-  const [seqs, tpls] = await Promise.all([
+  const [seqs, tpls, deals] = await Promise.all([
     prisma.sequence.findMany({ where: { workspaceId: { in: ids } }, orderBy: { name: "asc" } }),
     prisma.template.findMany({ where: { workspaceId: { in: ids } }, select: { name: true, channel: true, body: true, workspaceId: true } }),
+    prisma.deal.findMany({
+      where: { workspaceId: { in: ids } },
+      orderBy: { publicId: "asc" },
+      select: {
+        id: true,
+        publicId: true,
+        name: true,
+        value: true,
+        stage: true,
+        workspaceId: true,
+        company: { select: { name: true, tier: true, telefono: true, contacts: { select: { phone: true }, take: 3 } } },
+      },
+    }),
   ]);
+  const seqIds = seqs.map((s) => s.id);
+  const enrolls = await prisma.sequenceEnrollment.findMany({
+    where: { sequenceId: { in: seqIds } },
+    select: { sequenceId: true, dealId: true, status: true, stepIndex: true, testTarget: true, nextFireAt: true },
+  });
+
   const bySlug: Record<string, SeqDTO[]> = { novit: [], sharky: [] };
   for (const s of seqs) {
     const slug = idToSlug.get(s.workspaceId);
@@ -79,18 +115,46 @@ export async function loader({ request }: LoaderFunctionArgs) {
     if (!slug) continue;
     tplBySlug[slug].push({ name: t.name, channel: t.channel as unknown as string, body: t.body });
   }
-  return { bySlug, tplBySlug };
+  const dealsBySlug: Record<string, DealLite[]> = { novit: [], sharky: [] };
+  for (const d of deals) {
+    const slug = idToSlug.get(d.workspaceId);
+    if (!slug) continue;
+    const phone = d.company?.telefono ?? d.company?.contacts.find((c) => c.phone)?.phone ?? null;
+    dealsBySlug[slug].push({
+      id: d.id,
+      publicId: d.publicId,
+      name: d.name,
+      value: d.value,
+      stage: d.stage,
+      company: d.company?.name ?? "—",
+      tier: d.company?.tier ?? null,
+      phone,
+    });
+  }
+  const enrollBySeq: Record<string, EnrollLite[]> = {};
+  for (const e of enrolls) {
+    (enrollBySeq[e.sequenceId] ??= []).push({
+      dealId: e.dealId,
+      status: e.status,
+      stepIndex: e.stepIndex,
+      test: !!e.testTarget,
+      nextFireAt: e.nextFireAt.toISOString(),
+    });
+  }
+  return { bySlug, tplBySlug, dealsBySlug, enrollBySeq };
 }
 
 export default function SequencesRoute() {
-  const { bySlug, tplBySlug } = useLoaderData<typeof loader>();
+  const { bySlug, tplBySlug, dealsBySlug, enrollBySeq } = useLoaderData<typeof loader>();
   const workspace = useAppStore((s) => s.workspace);
   const slug = workspace === "all" ? "novit" : workspace;
   const seqs: SeqDTO[] = bySlug[slug] ?? bySlug.novit ?? [];
   const templates: Tpl[] = tplBySlug[slug] ?? tplBySlug.novit ?? [];
+  const deals: DealLite[] = dealsBySlug[slug] ?? dealsBySlug.novit ?? [];
   const tplBody = useMemo(() => new Map(templates.map((t) => [t.name, t.body])), [templates]);
 
   const fetcher = useFetcher();
+  const enrollFetcher = useFetcher();
   const revalidator = useRevalidator();
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -100,6 +164,30 @@ export default function SequencesRoute() {
   const [editing, setEditing] = useState<number | null>(null);
   const [menuIdx, setMenuIdx] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
+  const [enrollOpen, setEnrollOpen] = useState(false);
+
+  const enrolled: EnrollLite[] = (selectedId && enrollBySeq[selectedId]) || [];
+  const dealById = useMemo(() => new Map(deals.map((d) => [d.id, d])), [deals]);
+  function enrollDeal(dealId: string, test: boolean) {
+    if (!selectedId) return;
+    enrollFetcher.submit(
+      { op: "enroll", sequenceId: selectedId, dealId, test: String(test) },
+      { method: "post", action: "/api/sequence-enroll" },
+    );
+  }
+  function unenrollDeal(dealId: string) {
+    if (!selectedId) return;
+    enrollFetcher.submit(
+      { op: "unenroll", sequenceId: selectedId, dealId },
+      { method: "post", action: "/api/sequence-enroll" },
+    );
+  }
+  useEffect(() => {
+    if (enrollFetcher.state === "idle" && enrollFetcher.data && (enrollFetcher.data as { ok?: boolean }).ok) {
+      revalidator.revalidate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enrollFetcher.state, enrollFetcher.data]);
 
   // default selection
   useEffect(() => {
@@ -253,6 +341,44 @@ export default function SequencesRoute() {
         </div>
       )}
 
+      {/* Inscritos: tratos asignados a esta secuencia */}
+      {draft && (
+        <div className="seq-enroll">
+          <div className="seq-enroll__bar">
+            <strong>Tratos inscritos</strong>
+            <span className="seq-enroll__count">{enrolled.length}</span>
+            {!draft.active && (
+              <span className="seq-enroll__hint">La secuencia está <b>pausada</b>: los inscritos esperan (salvo modo prueba).</span>
+            )}
+            <span style={{ flex: 1 }} />
+            <button type="button" className="btn btn--primary" onClick={() => setEnrollOpen(true)}>
+              <Icon name="plus" size={14} /> Inscribir trato
+            </button>
+          </div>
+          {enrolled.length > 0 && (
+            <div className="seq-enroll__list">
+              {enrolled.map((en) => {
+                const d = dealById.get(en.dealId);
+                const st = STATUS[en.status] ?? { label: en.status, color: "var(--fg-3)" };
+                return (
+                  <div key={en.dealId} className="seq-enroll__item">
+                    <span className="seq-enroll__pid">{d?.publicId ?? "—"}</span>
+                    <span className="seq-enroll__name">{d ? `${d.company} · ${d.name}` : en.dealId}</span>
+                    {en.test && <span className="seq-enroll__test">modo prueba → tu número</span>}
+                    <span className="seq-enroll__status" style={{ ["--c" as string]: st.color } as React.CSSProperties}>
+                      {st.label} · paso {en.stepIndex}
+                    </span>
+                    <button type="button" className="seq-enroll__rm" onClick={() => unenrollDeal(en.dealId)} title="Quitar de la secuencia">
+                      <Icon name="x" size={13} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Canvas tipo workflow */}
       <div className="seq-canvas" onClick={() => setMenuIdx(null)}>
         <div className="seq-flow">
@@ -349,6 +475,118 @@ export default function SequencesRoute() {
           onClose={() => setEditing(null)}
         />
       )}
+
+      {/* Modal de inscripción de tratos */}
+      {enrollOpen && draft && (
+        <EnrollModal
+          seqName={draft.name}
+          deals={deals}
+          enrolledIds={new Set(enrolled.map((e) => e.dealId))}
+          onEnroll={enrollDeal}
+          busy={enrollFetcher.state !== "idle"}
+          onClose={() => setEnrollOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function EnrollModal({
+  seqName,
+  deals,
+  enrolledIds,
+  onEnroll,
+  busy,
+  onClose,
+}: {
+  seqName: string;
+  deals: DealLite[];
+  enrolledIds: Set<string>;
+  onEnroll: (dealId: string, test: boolean) => void;
+  busy: boolean;
+  onClose: () => void;
+}) {
+  const [q, setQ] = useState("");
+  const [test, setTest] = useState(false);
+  const list = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return deals
+      .filter((d) => !enrolledIds.has(d.id))
+      .filter((d) =>
+        !needle ||
+        d.company.toLowerCase().includes(needle) ||
+        d.name.toLowerCase().includes(needle) ||
+        d.publicId.toLowerCase().includes(needle),
+      )
+      .slice(0, 60);
+  }, [deals, enrolledIds, q]);
+
+  return (
+    <div className="drawer-backdrop" onClick={onClose}>
+      <div className="seq-modal seq-modal--wide" onClick={(e) => e.stopPropagation()}>
+        <header>
+          <span className="seq-node__icon" style={{ background: "#16a34a" }}>
+            <Icon name="users" size={15} />
+          </span>
+          <div>
+            <div style={{ fontSize: 10, fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".06em", color: "var(--fg-3)" }}>
+              Inscribir en
+            </div>
+            <div style={{ fontWeight: 600 }}>{seqName}</div>
+          </div>
+          <button type="button" className="btn btn--icon" onClick={onClose} style={{ marginLeft: "auto" }}>
+            <Icon name="x" size={14} />
+          </button>
+        </header>
+
+        <div className="seq-modal__body">
+          <label className={`seq-testtoggle ${test ? "is-on" : ""}`}>
+            <input type="checkbox" checked={test} onChange={(e) => setTest(e.target.checked)} />
+            <span className="seq-testtoggle__sw" />
+            <span>
+              <b>Modo prueba</b> — los mensajes van a <b>tu número</b> (+51980203171), no al cliente. Ideal para validar el flujo.
+            </span>
+          </label>
+
+          <input
+            className="seq-search"
+            placeholder="Buscar por cliente, trato o ID…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            autoFocus
+          />
+
+          <div className="seq-deal-list">
+            {list.length === 0 && <div className="seq-deal-empty">Sin tratos para mostrar.</div>}
+            {list.map((d) => (
+              <div key={d.id} className="seq-deal-row">
+                <span className="seq-enroll__pid">{d.publicId}</span>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div className="seq-deal-row__co">{d.company}</div>
+                  <div className="seq-deal-row__nm">{d.name}</div>
+                </div>
+                {d.tier && <span className="seq-deal-row__tier">{d.tier}</span>}
+                {!d.phone && !test && <span className="seq-deal-row__nophone" title="Sin teléfono: el envío al cliente quedará en espera">sin teléfono</span>}
+                <button
+                  type="button"
+                  className="btn btn--primary btn--sm"
+                  disabled={busy}
+                  onClick={() => onEnroll(d.id, test)}
+                >
+                  Inscribir
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <footer>
+          <span style={{ fontSize: 12, color: "var(--fg-3)" }}>
+            El envío real ocurre cuando el motor corre en la Mac. Los inscritos aparecen abajo al instante.
+          </span>
+          <button type="button" className="btn btn--primary" onClick={onClose} style={{ marginLeft: "auto" }}>Listo</button>
+        </footer>
+      </div>
     </div>
   );
 }

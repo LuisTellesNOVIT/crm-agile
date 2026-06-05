@@ -121,6 +121,7 @@ const SEQUENCES: Seq[] = [
     steps: [
       { kind: "trigger", title: "Inicio manual (cliente de prueba)", body: "Se enrola manualmente un cliente básico para probar." },
       { kind: "wa", title: "WhatsApp · Saludo de prueba", body: "Mensaje de prueba #1.", to: "client", templateKey: "test_saludo" },
+      { kind: "branch", title: "¿Respondió el cliente?", body: "Si el cliente respondió, salimos de la secuencia (no insistir)." },
       { kind: "delay", title: "Esperar 1 día", body: "Pausa de prueba.", delayDays: 1 },
       { kind: "wa", title: "WhatsApp · Seguimiento de prueba", body: "Mensaje de prueba #2.", to: "client", templateKey: "test_seguimiento" },
       { kind: "exit", title: "Fin de la prueba", body: "Termina el test." },

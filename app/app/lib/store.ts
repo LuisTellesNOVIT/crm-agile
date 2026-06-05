@@ -38,6 +38,7 @@ type UIState = {
   aiOpen: boolean;
   aiHint: string | null;
   newLeadOpen: boolean;
+  newLeadStage: string | null; // etapa preseleccionada al abrir el alta desde una columna
   filtersOpen: boolean;
   selectedDealId: string | null;
 };
@@ -49,7 +50,10 @@ type State = {
   theme: Theme;
   ui: UIState;
   filters: Filters;
+  sidebarCollapsed: boolean;
 
+  toggleSidebar: () => void;
+  setSidebarCollapsed: (v: boolean) => void;
   setWorkspace: (w: ActiveWorkspaceId) => void;
   setCurrency: (c: Currency) => void;
   setDensity: (d: Density) => void;
@@ -61,7 +65,7 @@ type State = {
   openAI: (hint?: string | null) => void;
   closeAI: () => void;
   toggleAI: () => void;
-  openNewLead: () => void;
+  openNewLead: (stage?: string) => void;
   closeNewLead: () => void;
   setSelectedDeal: (id: string | null) => void;
   setFiltersOpen: (open: boolean) => void;
@@ -85,10 +89,22 @@ export const useAppStore = create<State>((set) => ({
     aiOpen: false,
     aiHint: null,
     newLeadOpen: false,
+    newLeadStage: null,
     filtersOpen: false,
     selectedDealId: null,
   },
   filters: EMPTY_FILTERS,
+  sidebarCollapsed: false,
+  toggleSidebar: () =>
+    set((s) => {
+      const next = !s.sidebarCollapsed;
+      if (typeof window !== "undefined") localStorage.setItem("sidebar-collapsed", next ? "1" : "0");
+      return { sidebarCollapsed: next };
+    }),
+  setSidebarCollapsed: (v) => {
+    if (typeof window !== "undefined") localStorage.setItem("sidebar-collapsed", v ? "1" : "0");
+    set({ sidebarCollapsed: v });
+  },
   setWorkspace: (workspace) =>
     set((s) => ({
       workspace,
@@ -106,8 +122,8 @@ export const useAppStore = create<State>((set) => ({
   closeAI: () => set((s) => ({ ui: { ...s.ui, aiOpen: false, aiHint: null } })),
   toggleAI: () =>
     set((s) => ({ ui: { ...s.ui, aiOpen: !s.ui.aiOpen, aiHint: null } })),
-  openNewLead: () => set((s) => ({ ui: { ...s.ui, newLeadOpen: true } })),
-  closeNewLead: () => set((s) => ({ ui: { ...s.ui, newLeadOpen: false } })),
+  openNewLead: (stage) => set((s) => ({ ui: { ...s.ui, newLeadOpen: true, newLeadStage: stage ?? null } })),
+  closeNewLead: () => set((s) => ({ ui: { ...s.ui, newLeadOpen: false, newLeadStage: null } })),
   setSelectedDeal: (id) =>
     set((s) => ({ ui: { ...s.ui, selectedDealId: id } })),
   setFiltersOpen: (open) => set((s) => ({ ui: { ...s.ui, filtersOpen: open } })),
@@ -140,14 +156,21 @@ export function countActiveFilters(f: Filters): number {
 
 // ---------- loader data shape (matches _app.tsx loader return) ----------
 
+type WsData = {
+  deals: Deal[];
+  owners: OwnersByKey;
+  companies: import("./types").CompanyLite[];
+  stages: import("./types").Stage[];
+  sequences: import("./types").SeqOption[];
+};
 export type WorkspaceLoaderData = {
-  novit: { deals: Deal[]; owners: OwnersByKey; companies: import("./types").CompanyLite[]; stages: import("./types").Stage[] };
-  sharky: { deals: Deal[]; owners: OwnersByKey; companies: import("./types").CompanyLite[]; stages: import("./types").Stage[] };
+  novit: WsData;
+  sharky: WsData;
 };
 
 const EMPTY_DATA: WorkspaceLoaderData = {
-  novit: { deals: [], owners: {}, companies: [], stages: [] },
-  sharky: { deals: [], owners: {}, companies: [], stages: [] },
+  novit: { deals: [], owners: {}, companies: [], stages: [], sequences: [] },
+  sharky: { deals: [], owners: {}, companies: [], stages: [], sequences: [] },
 };
 
 export type CurrentUserData = {
@@ -228,6 +251,7 @@ export function useActiveWorkspace(): Workspace {
         owners: { ...data.novit.owners, ...data.sharky.owners },
         companies: [...data.novit.companies, ...data.sharky.companies],
         stages: novitStages,
+        sequences: [...data.novit.sequences, ...data.sharky.sequences],
         today: todayDate,
       };
     } else {
@@ -237,6 +261,7 @@ export function useActiveWorkspace(): Workspace {
         owners: data[workspace].owners,
         companies: data[workspace].companies,
         stages: workspace === "sharky" ? sharkyStages : novitStages,
+        sequences: data[workspace].sequences,
         today: todayDate,
       };
     }

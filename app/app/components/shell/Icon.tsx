@@ -35,6 +35,7 @@ import {
   Calendar,
   MoreHorizontal,
   MessageCircle,
+  PanelLeft,
   type LucideProps,
 } from "lucide-react";
 import type { ComponentType, CSSProperties } from "react";
@@ -76,7 +77,8 @@ export type IconName =
   | "note"
   | "calendar"
   | "more"
-  | "wa";
+  | "wa"
+  | "panel";
 
 const MAP: Record<IconName, ComponentType<LucideProps>> = {
   dashboard: LayoutDashboard,
@@ -116,6 +118,7 @@ const MAP: Record<IconName, ComponentType<LucideProps>> = {
   calendar: Calendar,
   more: MoreHorizontal,
   wa: MessageCircle,
+  panel: PanelLeft,
 };
 
 type Props = {

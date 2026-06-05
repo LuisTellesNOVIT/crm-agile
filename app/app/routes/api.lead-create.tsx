@@ -44,6 +44,7 @@ export async function action({ request }: ActionFunctionArgs) {
   const stageKey = String(fd.get("stage") ?? "").trim();
   const dealNameRaw = String(fd.get("dealName") ?? "").trim();
   const tags = parseTags(String(fd.get("tags") ?? ""));
+  const sequenceId = String(fd.get("sequenceId") ?? "").trim();
 
   // ── Validaciones ────────────────────────────────────────
   const errors: string[] = [];
@@ -66,6 +67,13 @@ export async function action({ request }: ActionFunctionArgs) {
   });
   if (!ws) {
     return Response.json({ error: `Workspace no encontrado: ${workspaceSlug}` }, { status: 400 });
+  }
+
+  // ── Secuencia de seguimiento (opcional) — debe ser del mismo grupo ──
+  let validSeqId: string | null = null;
+  if (sequenceId) {
+    const seq = await prisma.sequence.findUnique({ where: { id: sequenceId }, select: { workspaceId: true } });
+    if (seq && seq.workspaceId === ws.id) validSeqId = sequenceId;
   }
 
   // ── Stage default (primer no-won/lost) ──────────────
@@ -175,12 +183,28 @@ export async function action({ request }: ActionFunctionArgs) {
       projectStartAt,
       projectEndAt,
       closedAt: isWonOrLost ? new Date() : null,
+      sequenceId: validSeqId,
       workspaceId: ws.id,
       companyId: company.id,
       ownerId: me.id,
     },
-    select: { publicId: true, name: true },
+    select: { id: true, publicId: true, name: true },
   });
+
+  // Inscribe el lead en la secuencia elegida (motor agendado).
+  if (validSeqId) {
+    await prisma.sequenceEnrollment.create({
+      data: {
+        workspaceId: ws.id,
+        sequenceId: validSeqId,
+        dealId: deal.id,
+        stepIndex: 0,
+        status: "active",
+        nextFireAt: new Date(),
+        log: [] as never,
+      },
+    });
+  }
 
   return Response.json({
     ok: true,

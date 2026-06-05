@@ -72,6 +72,7 @@ export default function PipelineRoute() {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [quickFilter, setQuickFilter] = useState<QuickFilterId>("all");
   const [companySearch, setCompanySearch] = useState("");
+  const [stageFilter, setStageFilter] = useState<string | null>(null);
   const [stageEditorOpen, setStageEditorOpen] = useState(false);
   const currentUser = useCurrentUser();
 
@@ -110,6 +111,8 @@ export default function PipelineRoute() {
       const haystack = `${d.company} ${d.name} ${d.id}`.toLowerCase();
       if (!haystack.includes(searchQ)) return false;
     }
+    // ── Filtro por etapa (click en el strip de proceso) ──
+    if (stageFilter && d.stage !== stageFilter) return false;
     if (quickFilter === "all") return true;
     const facts = getDealFacts(d);
     const days = daysInStage(d, ws.today);
@@ -247,9 +250,10 @@ export default function PipelineRoute() {
               <span key={s.id} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
                 <button
                   type="button"
-                  className={`pipe-process__node ${isClosed ? "is-closed" : ""}`.trim()}
-                  onClick={() => setStageEditorOpen(true)}
-                  title="Click para editar esta etapa"
+                  className={`pipe-process__node ${isClosed ? "is-closed" : ""} ${stageFilter === s.id ? "is-selected" : ""}`.trim()}
+                  onClick={() => setStageFilter((prev) => (prev === s.id ? null : s.id))}
+                  aria-pressed={stageFilter === s.id}
+                  title={stageFilter === s.id ? "Quitar filtro de esta etapa" : `Filtrar por ${s.label}`}
                 >
                   <span className="pipe-process__dot" style={{ background: s.color }} />
                   <span className="pipe-process__name">{s.label}</span>
@@ -330,13 +334,16 @@ export default function PipelineRoute() {
             </>
           )}
         </div>
-        {quickFilter !== "all" && (
+        {(quickFilter !== "all" || stageFilter) && (
           <button
             type="button"
             className="pipe-filter pipe-filter--clear"
-            onClick={() => setQuickFilter("all")}
+            onClick={() => {
+              setQuickFilter("all");
+              setStageFilter(null);
+            }}
           >
-            <Icon name="x" size={11} /> Limpiar
+            <Icon name="x" size={11} /> Limpiar{stageFilter ? ` · ${ws.stages.find((s) => s.id === stageFilter)?.label ?? ""}` : ""}
           </button>
         )}
       </div>
@@ -351,7 +358,9 @@ export default function PipelineRoute() {
       {viewMode === "kanban" ? (
         <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
           <div className="pipeline">
-            {ws.stages.map((stage) => (
+            {ws.stages
+              .filter((stage) => !stageFilter || stage.id === stageFilter)
+              .map((stage) => (
               <PipelineColumn
                 key={stage.id}
                 stage={stage}
@@ -419,6 +428,7 @@ function PipelineColumn({
   draggingId: string | null;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage.id });
+  const openNewLead = useAppStore((s) => s.openNewLead);
 
   const ds = useMemo(() => {
     return allDeals.filter((d) => {
@@ -524,8 +534,13 @@ function PipelineColumn({
             </span>
           </div>
         )}
-        {!isLost && (
-          <button type="button" className="pipe-col__add-deal" title="Próximamente">
+        {isOpen && (
+          <button
+            type="button"
+            className="pipe-col__add-deal"
+            title={`Nuevo trato en ${stage.label}`}
+            onClick={() => openNewLead(stage.id)}
+          >
             <Icon name="plus" size={12} /> Nuevo trato
           </button>
         )}
@@ -879,11 +894,15 @@ function PipelineListView({
       <div className="pipe-list__body">
         {listMode === "grouped" ? (
           <div className="pipe-list__groups">
-            {stages.map((stage) => {
+            {(() => {
+              let runningIndex = 0;
+              return stages.map((stage) => {
               const stat = stageStats.get(stage.id) ?? { count: 0, total: 0, arr: 0 };
               const rows = patched
                 .filter((d) => d.stage === stage.id)
                 .sort((a, b) => b.value - a.value);
+              const startIndex = runningIndex;
+              runningIndex += rows.length;
               const isCollapsed = collapsed.has(stage.id);
               return (
                 <section
@@ -925,6 +944,7 @@ function PipelineListView({
                   {!isCollapsed && rows.length > 0 && (
                     <ListTable
                       rows={rows}
+                      startIndex={startIndex}
                       stages={stages}
                       owners={owners}
                       today={today}
@@ -941,7 +961,8 @@ function PipelineListView({
                   )}
                 </section>
               );
-            })}
+              });
+            })()}
           </div>
         ) : (
           <ListTable
@@ -971,6 +992,7 @@ function ListTable({
   onOpenDeal,
   onStageChange,
   hideStageColumn,
+  startIndex = 0,
   sortKey,
   sortDir,
   onSort,
@@ -983,6 +1005,7 @@ function ListTable({
   onOpenDeal: (id: string) => void;
   onStageChange: (dealId: string, newStage: Stage["id"]) => void;
   hideStageColumn?: boolean;
+  startIndex?: number;
   sortKey?: SortKey;
   sortDir?: SortDir;
   onSort?: (k: SortKey) => void;
@@ -1026,6 +1049,7 @@ function ListTable({
       <div
         className={`pipe-list-table__row pipe-list-table__row--head ${hideStageColumn ? "no-stage-col" : ""}`.trim()}
       >
+        <span className="pipe-list-table__th pipe-list-table__th--num">#</span>
         {onSort ? <SortHead k="company">Empresa</SortHead> : <span className="pipe-list-table__th">Empresa</span>}
         <span className="pipe-list-table__th">Trato</span>
         {!hideStageColumn && (
@@ -1037,10 +1061,11 @@ function ListTable({
         {onSort ? <SortHead k="ai" align="right">AI</SortHead> : <span className="pipe-list-table__th pipe-list-table__th--right">AI</span>}
         {onSort ? <SortHead k="age" align="right">Edad</SortHead> : <span className="pipe-list-table__th pipe-list-table__th--right">Edad</span>}
       </div>
-      {rows.map((d) => (
+      {rows.map((d, i) => (
         <ListRow
           key={d.id}
           deal={d}
+          index={startIndex + i + 1}
           stages={stages}
           owners={owners}
           today={today}
@@ -1056,6 +1081,7 @@ function ListTable({
 
 function ListRow({
   deal,
+  index,
   stages,
   owners,
   today,
@@ -1065,6 +1091,7 @@ function ListRow({
   onStageChange,
 }: {
   deal: Deal;
+  index: number;
   stages: Stage[];
   owners: OwnersByKey;
   today: Date;
@@ -1089,6 +1116,7 @@ function ListRow({
       }
       onClick={() => onOpenDeal(deal.id)}
     >
+      <span className="pipe-list-table__cell pipe-list-table__cell--num">{index}</span>
       <span className="pipe-list-table__cell pipe-list-table__cell--company">
         <span className="pipe-list-table__company">{deal.company}</span>
         <span className="pipe-list-table__id mono">{deal.id}</span>

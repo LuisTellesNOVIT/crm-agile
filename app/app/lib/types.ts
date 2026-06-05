@@ -83,8 +83,17 @@ export type Deal = {
   isRecurring: boolean;
   arr: number;
   source?: string | null;
+  sequence?: string | null; // Sequence.id asignada para el seguimiento (o null)
   tags: string[];
   _ws?: WorkspaceId;
+};
+
+/** Opción de secuencia para el selector "Secuencia" del lead. */
+export type SeqOption = {
+  id: string;
+  name: string;
+  category: string | null;
+  active: boolean;
 };
 
 export type Workspace = {
@@ -93,6 +102,7 @@ export type Workspace = {
   owners: OwnersByKey;
   companies: CompanyLite[]; // lista de empresas del workspace (para pickers)
   stages: Stage[];
+  sequences: SeqOption[]; // secuencias disponibles para asignar al lead
   today: Date;
   isAll?: boolean;
 };

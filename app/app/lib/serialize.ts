@@ -16,6 +16,7 @@ type PrismaDeal = {
   probability: number;
   ai: number;
   source?: string | null;
+  sequenceId?: string | null;
   tags?: string[] | null;
   createdAt: Date | string;
   estimatedCloseAt: Date | string;
@@ -59,6 +60,7 @@ export function toClientDeal(d: PrismaDeal): Deal {
     isRecurring: d.isRecurring,
     arr: d.mrr ? d.mrr * 12 : 0,
     source: d.source ?? null,
+    sequence: d.sequenceId ?? null,
     tags: d.tags ?? [],
   };
 }

@@ -165,6 +165,7 @@ model Deal {
   probability      Float    // 0..1, derivada de stage
   ai               Int      // 0..100 AI score
   source           String?  // fb_ads | linkedin | web | referral
+  sequenceId       String?  // secuencia de seguimiento asignada manualmente (Sequence.id)
   tags             String[] @default([]) // palabras clave: sector, lead, cliente, etc.
   createdAt        DateTime @default(now())
   estimatedCloseAt DateTime
@@ -273,4 +274,62 @@ model SequenceEnrollment {
 
   @@unique([sequenceId, dealId])
   @@index([workspaceId, status, nextFireAt])
+}
+
+// Mensajes entrantes de WhatsApp (modo SOLO-REGISTRO, nunca auto-responde).
+// Sirve para que el motor detecte respuestas y ramifique "¿Respondió?".
+model InboundMessage {
+  id         String   @id @default(cuid())
+  fromNumber String   // número del remitente, dígitos (E.164 sin '+')
+  toNumber   String?  // a qué cuenta llegó
+  chatType   String   @default("dm") // dm | group
+  at         DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  @@index([fromNumber, at])
+}
+
+// Programación de mensajes (correos / WhatsApp) — plano de control.
+// La UI define qué/cuándo/a quién; el runner local (Mac con el gateway)
+// lee esto, envía y registra en MessageLog. Honra `enabled` y `runNow`.
+model ScheduledMessage {
+  id          String   @id @default(cuid())
+  name        String   // "Resumen CRM · Gerencia NOVIT"
+  kind        String   @default("brief") // brief | custom
+  channel     String   @default("wa")    // wa | email
+  target      String   // JID/número/email (CSV para varios)
+  targetLabel String?  // "Gerencia NOVIT + tu número"
+  body        String?  // texto (para kind=custom; brief se arma solo)
+
+  freq        String   @default("weekly") // weekly | daily | manual
+  weekday     Int?     // 0=Dom … 1=Lun … 6=Sáb (para weekly)
+  hour        Int      @default(8)
+  minute      Int      @default(0)
+
+  enabled     Boolean  @default(true)
+  runNow      Boolean  @default(false) // pedido "Enviar ahora" desde la UI
+  lastRunAt   DateTime?
+  lastStatus  String?  // sent | failed | skipped
+  lastError   String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([enabled])
+}
+
+// Bitácora de envíos — "qué se envió y cuándo".
+model MessageLog {
+  id          String   @id @default(cuid())
+  scheduledId String?  // ScheduledMessage.id si vino de una programación
+  kind        String   // brief | sequence | custom | test
+  channel     String
+  target      String
+  summary     String   // primeras líneas / asunto
+  status      String   // sent | failed
+  error       String?
+  at          DateTime @default(now())
+
+  @@index([at])
+  @@index([scheduledId])
 }

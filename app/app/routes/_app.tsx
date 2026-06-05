@@ -120,18 +120,39 @@ export async function loader({ request }: { request: Request }): Promise<AppLoad
         email: c.email ?? null,
       }));
 
+    // Secuencias por workspace (para el selector "Secuencia" del lead)
+    const wsIds = [novitWs?.id, sharkyWs?.id].filter(Boolean) as string[];
+    const allSeqs = wsIds.length
+      ? await prisma.sequence.findMany({
+          where: { workspaceId: { in: wsIds } },
+          select: { id: true, name: true, active: true, nodes: true, workspaceId: true },
+          orderBy: { name: "asc" },
+        })
+      : [];
+    const mapSequences = (wsId?: string) =>
+      allSeqs
+        .filter((s) => s.workspaceId === wsId)
+        .map((s) => ({
+          id: s.id,
+          name: s.name,
+          category: ((s.nodes as Record<string, unknown> | null)?.category as string) ?? null,
+          active: s.active,
+        }));
+
     return {
       novit: {
         deals: (novitWs?.deals ?? []).map(toClientDeal),
         owners: ownersByInitials(novitWs?.users ?? []),
         companies: mapCompanies(novitWs?.companies ?? [], "novit"),
         stages: mapStages(novitWs?.pipelineStages ?? []),
+        sequences: mapSequences(novitWs?.id),
       },
       sharky: {
         deals: (sharkyWs?.deals ?? []).map(toClientDeal),
         owners: ownersByInitials(sharkyWs?.users ?? []),
         companies: mapCompanies(sharkyWs?.companies ?? [], "sharky"),
         stages: mapStages(sharkyWs?.pipelineStages ?? []),
+        sequences: mapSequences(sharkyWs?.id),
       },
       currentUser: {
         id: user.id,
@@ -182,6 +203,14 @@ export default function AppLayout() {
   const closeAI = useAppStore((s) => s.closeAI);
   const toggleCmdK = useAppStore((s) => s.toggleCmdK);
   const toggleAI = useAppStore((s) => s.toggleAI);
+  const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
+  const setSidebarCollapsed = useAppStore((s) => s.setSidebarCollapsed);
+
+  // Restaura la preferencia de menú colapsado al montar (cliente).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (localStorage.getItem("sidebar-collapsed") === "1") setSidebarCollapsed(true);
+  }, [setSidebarCollapsed]);
 
   const ws = useActiveWorkspace();
   // Total deals = sin filtros aplicados, contra el dataset crudo del loader.
@@ -229,7 +258,7 @@ export default function AppLayout() {
   ]);
 
   return (
-    <div className="app">
+    <div className={`app ${sidebarCollapsed ? "app--nav-collapsed" : ""}`.trim()}>
       <Sidebar />
       <main className="main">
         <div className="topbar-wrap">

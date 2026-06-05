@@ -9,6 +9,9 @@ export default [
   route("api/deal-delete", "routes/api.deal-delete.tsx"),
   route("api/company-update", "routes/api.company-update.tsx"),
   route("api/stages", "routes/api.stages.tsx"),
+  route("api/sequence-update", "routes/api.sequence-update.tsx"),
+  route("api/sequence-enroll", "routes/api.sequence-enroll.tsx"),
+  route("api/scheduled-message", "routes/api.scheduled-message.tsx"),
   layout("routes/_app.tsx", [
     index("routes/dashboard.tsx"),
     route("inbox", "routes/inbox.tsx"),
@@ -18,6 +21,7 @@ export default [
     route("chat", "routes/chat.tsx"),
     route("templates", "routes/templates.tsx"),
     route("sequences", "routes/sequences.tsx"),
+    route("programaciones", "routes/programaciones.tsx"),
     route("objects", "routes/objects.tsx"),
     route("schema", "routes/schema.tsx"),
     route("settings", "routes/settings.tsx"),

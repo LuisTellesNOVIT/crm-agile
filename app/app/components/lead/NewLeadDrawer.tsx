@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useFetcher } from "react-router";
 import { Icon } from "../shell/Icon";
 import { Chip } from "../ui/Chip";
-import { useActiveWorkspace, useCurrentUser } from "../../lib/store";
+import { useActiveWorkspace, useCurrentUser, useWorkspaceLoaderData, useAppStore } from "../../lib/store";
 import { TagsEditor } from "../ui/TagsEditor";
 
 /**
@@ -28,6 +28,7 @@ type FormState = {
   estimatedValue: string;
   dealName: string;
   stage: string;
+  sequence: string;
 };
 
 const INITIAL: FormState = {
@@ -42,6 +43,7 @@ const INITIAL: FormState = {
   estimatedValue: "",
   dealName: "",
   stage: "",
+  sequence: "",
 };
 
 type ActionResult = { ok?: boolean; error?: string; dealId?: string; dealName?: string; company?: string; message?: string };
@@ -50,7 +52,8 @@ export function NewLeadDrawer({ onClose }: { onClose: () => void }) {
   const ws = useActiveWorkspace();
   const currentUser = useCurrentUser();
   const fetcher = useFetcher<ActionResult>();
-  const [form, setForm] = useState<FormState>(INITIAL);
+  const presetStage = useAppStore((s) => s.ui.newLeadStage);
+  const [form, setForm] = useState<FormState>(() => ({ ...INITIAL, stage: presetStage ?? "" }));
   const [tags, setTags] = useState<string[]>([]);
   const update = (patch: Partial<FormState>) => setForm((f) => ({ ...f, ...patch }));
 
@@ -66,6 +69,10 @@ export function NewLeadDrawer({ onClose }: { onClose: () => void }) {
   // Stage default = primer stage del workspace que no sea won/lost
   const defaultStage =
     ws.stages.find((s) => s.id !== "won" && s.id !== "lost")?.id ?? "qualified";
+
+  // Secuencias del grupo destino (no del activo, por si está en "all")
+  const loaderData = useWorkspaceLoaderData();
+  const seqOptions = loaderData[targetWorkspace as "novit" | "sharky"]?.sequences ?? [];
 
   // Cerrar drawer 1.5s después del éxito (para que vea el mensaje)
   useEffect(() => {
@@ -100,6 +107,7 @@ export function NewLeadDrawer({ onClose }: { onClose: () => void }) {
         stage: form.stage || defaultStage,
         dealName: form.dealName,
         tags: tags.join(","),
+        sequenceId: form.sequence,
       },
       { method: "POST", action: "/api/lead-create" },
     );
@@ -272,6 +280,22 @@ export function NewLeadDrawer({ onClose }: { onClose: () => void }) {
                   />
                 </label>
               </div>
+
+              <label className="lead-form__field">
+                <span>Secuencia de seguimiento <small style={{ color: "var(--fg-4)" }}>(opcional)</small></span>
+                <select
+                  value={form.sequence}
+                  onChange={(e) => update({ sequence: e.target.value })}
+                >
+                  <option value="">— Sin secuencia —</option>
+                  {seqOptions.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {(s.category ? s.category + " · " : "") + s.name}
+                      {s.active ? "" : " (pausada)"}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
               <label className="lead-form__field">
                 <span>Canal de origen</span>

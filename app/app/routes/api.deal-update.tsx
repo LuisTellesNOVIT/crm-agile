@@ -291,6 +291,25 @@ export async function action({ request }: ActionFunctionArgs) {
     }
   }
 
+  // ─── sequenceId (asignación manual de secuencia de seguimiento) ─
+  // "" → quita la secuencia; un id → la asigna (validando que sea del grupo).
+  let seqSync: { clear: boolean; id?: string } | null = null;
+  const seqRaw = form.get("sequenceId");
+  if (seqRaw != null) {
+    const sid = String(seqRaw).trim();
+    if (!sid) {
+      data.sequenceId = null;
+      seqSync = { clear: true };
+    } else {
+      const seq = await prisma.sequence.findUnique({ where: { id: sid }, select: { workspaceId: true } });
+      if (!seq || seq.workspaceId !== targetWsId) errors.push("La secuencia no pertenece al grupo del trato");
+      else {
+        data.sequenceId = sid;
+        seqSync = { clear: false, id: sid };
+      }
+    }
+  }
+
   if (errors.length > 0) {
     return Response.json({ error: errors.join(" · ") }, { status: 400 });
   }
@@ -301,8 +320,27 @@ export async function action({ request }: ActionFunctionArgs) {
   const updated = await prisma.deal.update({
     where: { publicId },
     data,
-    select: { publicId: true, stage: true },
+    select: { id: true, publicId: true, stage: true, workspaceId: true },
   });
+
+  // Sincroniza la inscripción del motor con el campo "Secuencia".
+  // El campo es la fuente única: 1 trato → a lo sumo 1 secuencia de seguimiento.
+  if (seqSync) {
+    await prisma.sequenceEnrollment.deleteMany({ where: { dealId: updated.id } });
+    if (!seqSync.clear && seqSync.id) {
+      await prisma.sequenceEnrollment.create({
+        data: {
+          workspaceId: updated.workspaceId,
+          sequenceId: seqSync.id,
+          dealId: updated.id,
+          stepIndex: 0,
+          status: "active",
+          nextFireAt: new Date(),
+          log: [] as never,
+        },
+      });
+    }
+  }
 
   return Response.json({ ok: true, id: updated.publicId, stage: updated.stage });
 }

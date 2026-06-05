@@ -22,6 +22,7 @@ const VIEWS: View[] = [
   { id: "chat", path: "/chat", label: "Conversaciones", icon: "chat", group: "main" },
   { id: "templates", path: "/templates", label: "Templates", icon: "template", group: "auto" },
   { id: "sequences", path: "/sequences", label: "Secuencias", icon: "zap", group: "auto" },
+  { id: "programaciones", path: "/programaciones", label: "Programaciones", icon: "calendar", group: "auto" },
   { id: "objects", path: "/objects", label: "Custom objects", icon: "database", group: "data" },
   { id: "schema", path: "/schema", label: "Schema (Prisma)", icon: "code", group: "data" },
   { id: "empresas", path: "/empresas", label: "Empresas (SUNAT)", icon: "users", group: "data" },
@@ -50,11 +51,17 @@ export function Sidebar() {
     : CURRENT_USER[workspace];
   const inboxCount = inboxUnread(workspace);
   const [menuOpen, setMenuOpen] = useState(false);
+  const collapsed = useAppStore((s) => s.sidebarCollapsed);
+  const toggleSidebar = useAppStore((s) => s.toggleSidebar);
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${collapsed ? "sidebar--collapsed" : ""}`.trim()}>
       <div className="sidebar__brand">
-        <div className="ws-switcher" onClick={() => setMenuOpen((o) => !o)}>
+        <div
+          className="ws-switcher"
+          onClick={() => (collapsed ? toggleSidebar() : setMenuOpen((o) => !o))}
+          title={collapsed ? "Expandir menú" : undefined}
+        >
           <div className={`ws-mark ws-mark--${workspace}`}>{ws.mark}</div>
           <div className="ws-name">
             <b>{ws.name}</b>
@@ -62,6 +69,16 @@ export function Sidebar() {
           </div>
           <Icon name="chevron-down" size={14} className="ws-chevron" />
         </div>
+        <button
+          type="button"
+          className="sidebar__collapse"
+          onClick={toggleSidebar}
+          title={collapsed ? "Expandir menú" : "Colapsar menú"}
+          aria-label={collapsed ? "Expandir menú" : "Colapsar menú"}
+          aria-pressed={collapsed}
+        >
+          <Icon name="panel" size={16} />
+        </button>
         {menuOpen && (
           <div className="ws-menu" onMouseLeave={() => setMenuOpen(false)}>
             {(["novit", "sharky", "all"] as const).map((w) => {
@@ -169,12 +186,13 @@ function NavLinkItem({ v, badge }: { v: View; badge?: number }) {
     <NavLink
       to={v.path}
       end={v.path === "/"}
+      title={v.label}
       className={({ isActive }) =>
         `nav-item ${isActive ? "is-active" : ""}`.trim()
       }
     >
       <Icon name={v.icon} className="icon" size={16} />
-      <span>{v.label}</span>
+      <span className="nav-item__label">{v.label}</span>
       {badge ? <span className="nav-item__badge">{badge}</span> : null}
     </NavLink>
   );
