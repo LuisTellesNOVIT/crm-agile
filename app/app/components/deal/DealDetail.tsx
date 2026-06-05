@@ -236,6 +236,22 @@ function DetailPane({
     .map(([initials, o]) => ({ value: o.id ?? initials, label: o.name, sublabel: o.role }))
     .filter((o) => o.value);
 
+  // Empresa editable inline (todas las empresas, ambos grupos) — sin abrir Editar.
+  const allCompanies = useAllCompanies();
+  const currentUser = useCurrentUser();
+  const isAdmin = currentUser?.permissions === "admin";
+  const curCoWs = (allCompanies.find((c) => c.id === deal.companyId)?._ws ?? "novit") as "novit" | "sharky";
+  const novitCompanies = allCompanies.filter((c) => (c._ws ?? "novit") === "novit");
+  const sharkyCompanies = allCompanies.filter((c) => (c._ws ?? "novit") === "sharky");
+  const changeCompany = (id: string) => {
+    if (!id || id === deal.companyId) return;
+    const c = allCompanies.find((x) => x.id === id);
+    const targetWs = (c?._ws ?? curCoWs) as "novit" | "sharky";
+    const payload: Record<string, string> = { id: deal.id, companyId: id };
+    if (targetWs !== curCoWs) payload.moveToWorkspace = targetWs; // mueve el trato + reasigna owner
+    fetcher.submit(payload, { method: "POST", action: "/api/deal-update" });
+  };
+
   return (
     <div className="deal-detail__grid">
       <Card>
@@ -360,19 +376,28 @@ function DetailPane({
             )
           } />
           <FieldRow k="Empresa" v={
-            companies.length > 0 ? (
-              <InlineSelect
-                dealId={deal.id}
-                fieldName="companyId"
-                value={deal.companyId ?? ""}
-                options={companies.map((c) => ({ value: c.id, label: c.name, sublabel: c.industry ?? undefined }))}
-                ariaLabel="Empresa"
-                searchable
-                renderDisplay={() => <span>{deal.company}</span>}
-              />
-            ) : (
-              <span>{deal.company}</span>
-            )
+            <select
+              className="deal-detail__select"
+              value={deal.companyId ?? ""}
+              disabled={fetcher.state !== "idle"}
+              title="Cambiar empresa del trato (se guarda al instante)"
+              onChange={(e) => changeCompany(e.target.value)}
+            >
+              {(isAdmin || curCoWs === "novit") && (
+                <optgroup label="NOVIT">
+                  {novitCompanies.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </optgroup>
+              )}
+              {(isAdmin || curCoWs === "sharky") && (
+                <optgroup label="SHARKY">
+                  {sharkyCompanies.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
           } />
           <FieldRow k="Creado" v={<span className="mono">{new Date(deal.createdAt).toLocaleDateString("es")}</span>} />
           <FieldRow k="Cierre estimado" v={
