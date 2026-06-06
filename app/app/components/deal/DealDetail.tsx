@@ -253,14 +253,30 @@ function DetailPane({
   };
   // Cambiar el GRUPO inline = mover el trato + su empresa al otro workspace.
   const setWorkspace = useAppStore((s) => s.setWorkspace);
+  const groupRevalidator = useRevalidator();
   const changeGroup = (g: string) => {
     if ((g !== "novit" && g !== "sharky") || g === curCoWs) return;
     const ok = window.confirm(
       `¿Mover el trato y la empresa "${deal.company}" al grupo ${g.toUpperCase()}?\n\nEl owner se reasignará a un usuario de ${g.toUpperCase()}.`,
     );
     if (!ok) return; // el select vuelve a su valor (es controlado)
-    fetcher.submit({ id: deal.id, moveToWorkspace: g }, { method: "POST", action: "/api/deal-update" });
-    setWorkspace(g); // cambia la vista al grupo destino (el trato sigue siendo visible ahí)
+    // fetch() en vez de useFetcher: al cambiar de workspace se desmonta el detalle
+    // y un fetcher se abortaría ANTES de enviarse. Con fetch() el move se persiste
+    // sí o sí; recién cuando confirma OK cambiamos la vista al grupo destino.
+    const fd = new FormData();
+    fd.set("id", deal.id);
+    fd.set("moveToWorkspace", g);
+    fetch("/api/deal-update", { method: "POST", body: fd })
+      .then((r) => r.json())
+      .then((j) => {
+        if (j?.ok) {
+          setWorkspace(g);
+          groupRevalidator.revalidate();
+        } else {
+          window.alert(j?.error || "No se pudo mover el trato de grupo.");
+        }
+      })
+      .catch(() => window.alert("No se pudo mover el trato de grupo."));
   };
 
   return (
