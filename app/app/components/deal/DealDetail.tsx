@@ -251,6 +251,17 @@ function DetailPane({
     if (targetWs !== curCoWs) payload.moveToWorkspace = targetWs; // mueve el trato + reasigna owner
     fetcher.submit(payload, { method: "POST", action: "/api/deal-update" });
   };
+  // Cambiar el GRUPO inline = mover el trato + su empresa al otro workspace.
+  const setWorkspace = useAppStore((s) => s.setWorkspace);
+  const changeGroup = (g: string) => {
+    if ((g !== "novit" && g !== "sharky") || g === curCoWs) return;
+    const ok = window.confirm(
+      `¿Mover el trato y la empresa "${deal.company}" al grupo ${g.toUpperCase()}?\n\nEl owner se reasignará a un usuario de ${g.toUpperCase()}.`,
+    );
+    if (!ok) return; // el select vuelve a su valor (es controlado)
+    fetcher.submit({ id: deal.id, moveToWorkspace: g }, { method: "POST", action: "/api/deal-update" });
+    setWorkspace(g); // cambia la vista al grupo destino (el trato sigue siendo visible ahí)
+  };
 
   return (
     <div className="deal-detail__grid">
@@ -373,6 +384,22 @@ function DetailPane({
                 }}>{deal.owner}</span>
                 <span>{owner?.name ?? deal.owner}</span>
               </span>
+            )
+          } />
+          <FieldRow k="Grupo" v={
+            isAdmin ? (
+              <select
+                className="deal-detail__select"
+                value={curCoWs}
+                disabled={fetcher.state !== "idle"}
+                title="Mover el trato a otro grupo (se guarda al instante)"
+                onChange={(e) => changeGroup(e.target.value)}
+              >
+                <option value="novit">NOVIT</option>
+                <option value="sharky">SHARKY</option>
+              </select>
+            ) : (
+              <span>{curCoWs.toUpperCase()}</span>
             )
           } />
           <FieldRow k="Empresa" v={
