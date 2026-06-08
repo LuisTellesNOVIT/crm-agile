@@ -1352,8 +1352,17 @@ function CashFlowCard({ deals, currency, onOpenDeal }: { deals: Deal[]; currency
   const W = 940, H = 230, padB = 26, padT = 16, padX = 8;
   const innerW = W - padX * 2;
   const innerH = H - padB - padT;
-  const slot = innerW / data.months.length;
-  const bw = Math.min(48, slot * 0.6);
+  // Reservamos un área a la derecha para los acumulados (6m/12m), finitos y sutiles.
+  const accumArea = 132;
+  const gap = 26;
+  const monthsArea = innerW - accumArea - gap;
+  const slot = monthsArea / data.months.length;
+  const bw = Math.min(44, slot * 0.6);
+  const accSlot = accumArea / 2;
+  const accBw = Math.min(24, accSlot * 0.5);
+  const accX0 = padX + monthsArea + gap;
+  const divX = padX + monthsArea + gap / 2;
+  const accMax = Math.max(1, data.accum[data.accum.length - 1].total);
   // Detalle del drawer: un mes ("m<i>") o un acumulado ("a6"/"a12").
   const detail = useMemo(() => {
     if (detailKey == null) return null;
@@ -1415,33 +1424,27 @@ function CashFlowCard({ deals, currency, onOpenDeal }: { deals: Deal[]; currency
               </g>
             );
           })}
+          {/* ─── Acumulados (6m / 12m): finitos y sutiles, mismo horizonte ─── */}
+          <line x1={divX} y1={padT} x2={divX} y2={padT + innerH} stroke="var(--border-2)" strokeWidth="1" strokeDasharray="3 4" />
+          {data.accum.map((a, j) => {
+            const x = accX0 + accSlot * j + (accSlot - accBw) / 2;
+            const accScaleH = innerH - 12; // deja aire arriba para la etiqueta
+            const hSetup = (a.setup / accMax) * accScaleH;
+            const hSaas = (a.saas / accMax) * accScaleH;
+            const yBase = padT + innerH;
+            return (
+              <g key={a.key} style={{ cursor: "pointer" }} onClick={() => setDetailKey(a.key)}>
+                <title>{`${a.title}\nSetup: ${fmtMoney(a.setup, currency)}\nSaaS: ${fmtMoney(a.saas, currency)}\nTotal: ${fmtMoney(a.total, currency)}`}</title>
+                <rect x={accX0 + accSlot * j} y={padT} width={accSlot} height={innerH + 6} fill="transparent" />
+                {a.setup > 0 && <rect x={x} y={yBase - hSetup} width={accBw} height={hSetup} rx={2} fill="#2563eb" opacity={0.5} />}
+                {a.saas > 0 && <rect x={x} y={yBase - hSetup - hSaas} width={accBw} height={hSaas} rx={2} fill="#f59e0b" opacity={0.6} />}
+                <text x={x + accBw / 2} y={yBase - hSetup - hSaas - 5} textAnchor="middle" fontSize="9" fontFamily="var(--font-mono)" fontWeight="600" fill="var(--fg-3)" pointerEvents="none">{fmtMoney(a.total, currency)}</text>
+                <text x={x + accBw / 2} y={H - 8} textAnchor="middle" fontSize="10" fill="var(--fg-4)" pointerEvents="none">{a.label}</text>
+              </g>
+            );
+          })}
         </svg>
-        <div className="cashflow__accum">
-          <span className="cashflow__accum-label">Acumulado</span>
-          <div className="cashflow__accum-bars">
-            {data.accum.map((a) => {
-              const accMax = Math.max(1, data.accum[data.accum.length - 1].total);
-              const h = Math.max(14, (a.total / accMax) * 110);
-              return (
-                <button
-                  key={a.key}
-                  type="button"
-                  className="cashflow__accum-bar"
-                  onClick={() => setDetailKey(a.key)}
-                  title={`${a.title}\nSetup ${fmtMoney(a.setup, currency)} · SaaS ${fmtMoney(a.saas, currency)} · Total ${fmtMoney(a.total, currency)}`}
-                >
-                  <span className="cashflow__accum-val">{fmtMoney(a.total, currency)}</span>
-                  <span className="cashflow__accum-col" style={{ height: h }}>
-                    {a.saas > 0 && <span style={{ flex: a.saas, background: "#f59e0b" }} />}
-                    {a.setup > 0 && <span style={{ flex: a.setup, background: "#2563eb" }} />}
-                  </span>
-                  <span className="cashflow__accum-name">{a.label}</span>
-                </button>
-              );
-            })}
-          </div>
-          <span className="cashflow__hint" style={{ margin: 0, textAlign: "left" }}>Clic en un mes o en un acumulado para ver su sustento.</span>
-        </div>
+        <div className="cashflow__hint">Clic en un mes o en un acumulado (6 m / 12 m) para ver su sustento.</div>
         </>
         )}
       </div>
