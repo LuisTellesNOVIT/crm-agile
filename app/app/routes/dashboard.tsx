@@ -1349,12 +1349,12 @@ function CashFlowCard({ deals, currency, onOpenDeal }: { deals: Deal[]; currency
     return { months, accum, max, totSetup, totSaas, total: totSetup + totSaas, projects: projSet.size };
   }, [deals]);
 
-  const W = 940, H = 300, padB = 26, padT = 18, padX = 8;
+  const W = 940, H = 240, padB = 26, padT = 18, padX = 8;
   const innerW = W - padX * 2;
   const innerH = H - padB - padT;
-  const drawH = innerH - 14; // alto útil (deja aire para la etiqueta del tope)
-  // Escala ÚNICA para todo: el acumulado 12m es el máximo, así los 6m/12m se notan.
-  const chartMax = Math.max(1, data.max, ...data.accum.map((a) => a.total));
+  const drawH = innerH - 12;
+  const monthMaxH = drawH * 0.82; // los meses llegan hasta ~82% del alto
+  const acc12 = Math.max(1, data.accum[data.accum.length - 1].total);
   // Columnas en orden: el acumulado 6m se intercala tras el 6º mes; el 12m va al final.
   const columns: ({ kind: "month"; i: number } | { kind: "accum"; i: number })[] = [];
   data.months.forEach((_, i) => {
@@ -1402,8 +1402,8 @@ function CashFlowCard({ deals, currency, onOpenDeal }: { deals: Deal[]; currency
             if (col.kind === "month") {
               const mo = data.months[col.i];
               const x = xc + (slot - bw) / 2;
-              const hSetup = (mo.setup / chartMax) * drawH;
-              const hSaas = (mo.saas / chartMax) * drawH;
+              const hSetup = (mo.setup / data.max) * monthMaxH;
+              const hSaas = (mo.saas / data.max) * monthMaxH;
               return (
                 <g key={`m${col.i}`} style={{ cursor: mo.total > 0 ? "pointer" : "default" }} onClick={() => mo.total > 0 && setDetailKey(`m${col.i}`)}>
                   <title>{`${mo.label} ${mo.year} — clic para ver el sustento\nSetup: ${fmtMoney(mo.setup, currency)}\nSaaS: ${fmtMoney(mo.saas, currency)}\nTotal: ${fmtMoney(mo.total, currency)}`}</title>
@@ -1426,8 +1426,11 @@ function CashFlowCard({ deals, currency, onOpenDeal }: { deals: Deal[]; currency
             // acumulado (6m / 12m): finito, sutil, mismo horizonte
             const a = data.accum[col.i];
             const x = xc + (slot - accBw) / 2;
-            const hSetup = (a.setup / chartMax) * drawH;
-            const hSaas = (a.saas / chartMax) * drawH;
+            // Acumulados: apenas más altos que el mes más alto (escala comprimida, no proporcional).
+            const aTot = Math.max(1, a.total);
+            const accH = monthMaxH * (1 + 0.14 * (a.total / acc12));
+            const hSetup = accH * (a.setup / aTot);
+            const hSaas = accH * (a.saas / aTot);
             return (
               <g key={a.key} style={{ cursor: "pointer" }} onClick={() => setDetailKey(a.key)}>
                 <title>{`${a.title}\nSetup: ${fmtMoney(a.setup, currency)}\nSaaS: ${fmtMoney(a.saas, currency)}\nTotal: ${fmtMoney(a.total, currency)}`}</title>
