@@ -1436,9 +1436,9 @@ function CashFlowCard({ deals, currency, onOpenDeal }: { deals: Deal[]; currency
               <g key={a.key} style={{ cursor: "pointer" }} onClick={() => setDetailKey(a.key)}>
                 <title>{`${a.title}\nSetup: ${fmtMoney(a.setup, currency)}\nSaaS: ${fmtMoney(a.saas, currency)}\nTotal: ${fmtMoney(a.total, currency)}`}</title>
                 <rect x={accX0 + accSlot * j} y={padT} width={accSlot} height={innerH + 6} fill="transparent" />
-                {a.setup > 0 && <rect x={x} y={yBase - hSetup} width={accBw} height={hSetup} rx={2} fill="#2563eb" opacity={0.5} />}
-                {a.saas > 0 && <rect x={x} y={yBase - hSetup - hSaas} width={accBw} height={hSaas} rx={2} fill="#f59e0b" opacity={0.6} />}
-                <text x={x + accBw / 2} y={yBase - hSetup - hSaas - 5} textAnchor="middle" fontSize="9" fontFamily="var(--font-mono)" fontWeight="600" fill="var(--fg-3)" pointerEvents="none">{fmtMoney(a.total, currency)}</text>
+                {a.setup > 0 && <rect x={x} y={yBase - hSetup} width={accBw} height={hSetup} rx={2} fill="#2563eb" opacity={0.3} />}
+                {a.saas > 0 && <rect x={x} y={yBase - hSetup - hSaas} width={accBw} height={hSaas} rx={2} fill="#f59e0b" opacity={0.38} />}
+                <text x={x + accBw / 2} y={yBase - hSetup - hSaas - 5} textAnchor="middle" fontSize="8.5" fontFamily="var(--font-mono)" fontWeight="500" fill="var(--fg-4)" pointerEvents="none">{fmtMoney(a.total, currency)}</text>
                 <text x={x + accBw / 2} y={H - 8} textAnchor="middle" fontSize="10" fill="var(--fg-4)" pointerEvents="none">{a.label}</text>
               </g>
             );
