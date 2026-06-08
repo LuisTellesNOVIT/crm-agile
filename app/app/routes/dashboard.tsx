@@ -1499,6 +1499,114 @@ function CashFlowCard({ deals, currency, onOpenDeal }: { deals: Deal[]; currency
   );
 }
 
+/* ============================================================
+   CashFlowTable — flujo de caja DETALLADO mes a mes (vista Excel):
+   filas = proyectos estratégicos, columnas = 12 meses, + totales.
+   ============================================================ */
+function CashFlowTable({ deals, currency, onOpenDeal }: { deals: Deal[]; currency: Currency; onOpenDeal?: (id: string) => void }) {
+  const data = useMemo(() => {
+    const today = new Date();
+    const now0 = today.getFullYear() * 12 + today.getMonth();
+    const N = 12;
+    const mk = (d: Date) => d.getFullYear() * 12 + d.getMonth();
+    const months = Array.from({ length: N }, (_, i) => {
+      const m = now0 + i;
+      const dt = new Date(Math.floor(m / 12), m % 12, 1);
+      return { label: dt.toLocaleDateString("es", { month: "short" }).replace(".", ""), year: dt.getFullYear() };
+    });
+    type P = { id: string; company: string; name: string; setup: number[]; saas: number[] };
+    const map = new Map<string, P>();
+    const getP = (d: Deal) => {
+      let p = map.get(d.id);
+      if (!p) { p = { id: d.id, company: d.company, name: d.name, setup: new Array(N).fill(0), saas: new Array(N).fill(0) }; map.set(d.id, p); }
+      return p;
+    };
+    for (const d of deals) {
+      if (d.stage === "lost" || !d.strategic) continue;
+      const start = d.projectStartAt ? new Date(d.projectStartAt) : null;
+      const end = d.projectEndAt ? new Date(d.projectEndAt) : null;
+      if (start && end && d.value > 0) {
+        const sM = mk(start), eM = mk(end);
+        const dur = Math.max(1, eM - sM + 1);
+        const per = d.value / dur;
+        for (let m = sM; m <= eM; m++) { const i = m - now0; if (i >= 0 && i < N) getP(d).setup[i] += per; }
+      }
+      if (d.isRecurring && d.arr > 0) {
+        const goLive = end ? mk(end) : start ? mk(start) : now0;
+        const monthly = d.arr / 12;
+        for (let k = 0; k < 12; k++) { const i = goLive + k - now0; if (i >= 0 && i < N) getP(d).saas[i] += monthly; }
+      }
+    }
+    const projects = [...map.values()]
+      .map((p) => {
+        const monthly = p.setup.map((s, i) => s + p.saas[i]);
+        return { ...p, monthly, total: monthly.reduce((a, b) => a + b, 0) };
+      })
+      .sort((a, b) => b.total - a.total);
+    const setupBy = new Array(N).fill(0), saasBy = new Array(N).fill(0);
+    for (const p of projects) for (let i = 0; i < N; i++) { setupBy[i] += p.setup[i]; saasBy[i] += p.saas[i]; }
+    const totalBy = setupBy.map((s, i) => s + saasBy[i]);
+    return {
+      months, projects, setupBy, saasBy, totalBy,
+      sumSetup: setupBy.reduce((a, b) => a + b, 0),
+      sumSaas: saasBy.reduce((a, b) => a + b, 0),
+      grand: totalBy.reduce((a, b) => a + b, 0),
+    };
+  }, [deals]);
+
+  if (data.projects.length === 0) return null;
+  const cell = (v: number) => (v > 0 ? fmtMoney(v, currency) : "·");
+
+  return (
+    <div className="card">
+      <div className="card__h">
+        <Icon name="database" size={14} style={{ color: "var(--accent)" }} />
+        <span style={{ fontWeight: 600 }}>Flujo de caja detallado · mes a mes</span>
+        <span className="card__sub">{data.projects.length} proyectos · Σ {fmtMoney(data.grand, currency)}</span>
+      </div>
+      <div className="card__b">
+        <div className="cf-table-wrap">
+          <table className="cf-table">
+            <thead>
+              <tr>
+                <th className="cf-table__proj">Proyecto</th>
+                {data.months.map((m, i) => <th key={i}>{m.label}<small>{String(m.year).slice(2)}</small></th>)}
+                <th className="cf-table__tot">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.projects.map((p) => (
+                <tr key={p.id} onClick={() => onOpenDeal?.(p.id)} title="Abrir el trato">
+                  <td className="cf-table__proj"><b>{p.company}</b><span>{p.name}</span></td>
+                  {p.monthly.map((v, i) => <td key={i} className={v > 0 ? "" : "is-zero"} title={`Setup ${fmtMoney(p.setup[i], currency)} · SaaS ${fmtMoney(p.saas[i], currency)}`}>{cell(v)}</td>)}
+                  <td className="cf-table__tot">{fmtMoney(p.total, currency)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="cf-table__sub">
+                <td className="cf-table__proj">Setup</td>
+                {data.setupBy.map((v, i) => <td key={i} className={v > 0 ? "" : "is-zero"}>{cell(v)}</td>)}
+                <td className="cf-table__tot">{fmtMoney(data.sumSetup, currency)}</td>
+              </tr>
+              <tr className="cf-table__sub">
+                <td className="cf-table__proj">SaaS</td>
+                {data.saasBy.map((v, i) => <td key={i} className={v > 0 ? "" : "is-zero"}>{cell(v)}</td>)}
+                <td className="cf-table__tot">{fmtMoney(data.sumSaas, currency)}</td>
+              </tr>
+              <tr className="cf-table__total">
+                <td className="cf-table__proj">Total mes</td>
+                {data.totalBy.map((v, i) => <td key={i}>{cell(v)}</td>)}
+                <td className="cf-table__tot">{fmtMoney(data.grand, currency)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardRoute() {
   const workspace = useAppStore((s) => s.workspace);
   const currency = useAppStore((s) => s.currency);
@@ -1700,6 +1808,11 @@ export default function DashboardRoute() {
       {/* ───── Flujo de caja de proyectos (setup + SaaS 12m) ───── */}
       <div className="dash__row" style={{ gridTemplateColumns: "1fr" }}>
         <CashFlowCard deals={ws.deals} currency={currency} onOpenDeal={(id) => setSelectedDeal(id)} />
+      </div>
+
+      {/* ───── Flujo de caja detallado mes a mes (tipo Excel) ───── */}
+      <div className="dash__row" style={{ gridTemplateColumns: "1fr" }}>
+        <CashFlowTable deals={ws.deals} currency={currency} onOpenDeal={(id) => setSelectedDeal(id)} />
       </div>
 
       {/* ───── Facturación mensual: SETUP por etapa + SaaS (charts independientes) ───── */}
