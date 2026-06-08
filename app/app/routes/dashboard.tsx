@@ -1275,6 +1275,104 @@ function AIRecsCard({
 /* ============================================================
    ROUTE
    ============================================================ */
+/* ============================================================
+   CashFlowCard — flujo de caja mensual (próximos 12 meses):
+   el SETUP se reconoce repartido entre inicio y fin de proyecto;
+   el SaaS (MRR) se proyecta 12 meses desde el go-live (fin de proyecto).
+   Considera todos los proyectos activos (no perdidos).
+   ============================================================ */
+function CashFlowCard({ deals, currency }: { deals: Deal[]; currency: Currency }) {
+  const data = useMemo(() => {
+    const today = new Date();
+    const now0 = today.getFullYear() * 12 + today.getMonth();
+    const N = 12;
+    const mk = (d: Date) => d.getFullYear() * 12 + d.getMonth();
+    const setup = new Array(N).fill(0);
+    const saas = new Array(N).fill(0);
+    let projects = 0;
+    for (const d of deals) {
+      if (d.stage === "lost") continue;
+      const start = d.projectStartAt ? new Date(d.projectStartAt) : null;
+      const end = d.projectEndAt ? new Date(d.projectEndAt) : null;
+      let counted = false;
+      if (start && end && d.value > 0) {
+        const sM = mk(start), eM = mk(end);
+        const dur = Math.max(1, eM - sM + 1);
+        const per = d.value / dur;
+        for (let m = sM; m <= eM; m++) {
+          const i = m - now0;
+          if (i >= 0 && i < N) { setup[i] += per; counted = true; }
+        }
+      }
+      if (d.isRecurring && d.arr > 0) {
+        const goLive = end ? mk(end) : start ? mk(start) : now0;
+        const monthly = d.arr / 12;
+        for (let k = 0; k < 12; k++) {
+          const i = goLive + k - now0;
+          if (i >= 0 && i < N) { saas[i] += monthly; counted = true; }
+        }
+      }
+      if (counted) projects++;
+    }
+    const months = Array.from({ length: N }, (_, i) => {
+      const m = now0 + i;
+      const dt = new Date(Math.floor(m / 12), m % 12, 1);
+      return {
+        label: dt.toLocaleDateString("es", { month: "short" }).replace(".", ""),
+        year: dt.getFullYear(),
+        setup: setup[i], saas: saas[i], total: setup[i] + saas[i],
+      };
+    });
+    const max = Math.max(1, ...months.map((x) => x.total));
+    const totSetup = setup.reduce((a, b) => a + b, 0);
+    const totSaas = saas.reduce((a, b) => a + b, 0);
+    return { months, max, totSetup, totSaas, total: totSetup + totSaas, projects };
+  }, [deals]);
+
+  const W = 940, H = 210, padB = 26, padT = 14, padX = 8;
+  const innerW = W - padX * 2;
+  const innerH = H - padB - padT;
+  const slot = innerW / data.months.length;
+  const bw = Math.min(48, slot * 0.6);
+
+  return (
+    <div className="card">
+      <div className="card__h">
+        <Icon name="dollar" size={14} style={{ color: "var(--success)" }} />
+        <span style={{ fontWeight: 600 }}>Flujo de caja de proyectos · próximos 12 meses</span>
+        <span className="card__sub">{data.projects} proyectos · Σ {fmtMoney(data.total, currency)}</span>
+      </div>
+      <div className="card__b">
+        <div className="cashflow__legend">
+          <span><i className="cashflow__sw cashflow__sw--setup" /> Setup (entre inicio y fin) · <b>{fmtMoney(data.totSetup, currency)}</b></span>
+          <span><i className="cashflow__sw cashflow__sw--saas" /> SaaS (proyectado 12 m) · <b>{fmtMoney(data.totSaas, currency)}</b></span>
+        </div>
+        <svg width="100%" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" className="cashflow__svg">
+          {data.months.map((mo, i) => {
+            const x = padX + slot * i + (slot - bw) / 2;
+            const hSetup = (mo.setup / data.max) * innerH;
+            const hSaas = (mo.saas / data.max) * innerH;
+            const yBase = padT + innerH;
+            return (
+              <g key={i}>
+                <title>{`${mo.label} ${mo.year}\nSetup: ${fmtMoney(mo.setup, currency)}\nSaaS: ${fmtMoney(mo.saas, currency)}\nTotal: ${fmtMoney(mo.total, currency)}`}</title>
+                {mo.setup > 0 && <rect x={x} y={yBase - hSetup} width={bw} height={hSetup} rx={2} fill="#2563eb" />}
+                {mo.saas > 0 && <rect x={x} y={yBase - hSetup - hSaas} width={bw} height={hSaas} rx={2} fill="#f59e0b" />}
+                {mo.total > 0 && (
+                  <text x={x + bw / 2} y={yBase - hSetup - hSaas - 5} textAnchor="middle" fontSize="9" fontFamily="var(--font-mono)" fill="var(--fg-3)">
+                    {fmtMoney(mo.total, currency)}
+                  </text>
+                )}
+                <text x={x + bw / 2} y={H - 8} textAnchor="middle" fontSize="10.5" fill="var(--fg-3)">{mo.label}</text>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardRoute() {
   const workspace = useAppStore((s) => s.workspace);
   const currency = useAppStore((s) => s.currency);
@@ -1429,6 +1527,11 @@ export default function DashboardRoute() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* ───── Flujo de caja de proyectos (setup + SaaS 12m) ───── */}
+      <div className="dash__row" style={{ gridTemplateColumns: "1fr" }}>
+        <CashFlowCard deals={ws.deals} currency={currency} />
       </div>
 
       {/* ───── AI Forecast · Pipeline weighted ───── */}

@@ -17,6 +17,7 @@ type PrismaDeal = {
   ai: number;
   source?: string | null;
   sequenceId?: string | null;
+  strategic?: boolean | null;
   tags?: string[] | null;
   createdAt: Date | string;
   estimatedCloseAt: Date | string;
@@ -61,6 +62,7 @@ export function toClientDeal(d: PrismaDeal): Deal {
     arr: d.mrr ? d.mrr * 12 : 0,
     source: d.source ?? null,
     sequence: d.sequenceId ?? null,
+    strategic: d.strategic ?? false,
     tags: d.tags ?? [],
   };
 }

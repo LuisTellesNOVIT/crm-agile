@@ -276,6 +276,13 @@ export async function action({ request }: ActionFunctionArgs) {
     }
   }
 
+  // ─── strategic (Sí/No) ─────────────────────────────────
+  const strategic = form.get("strategic");
+  if (strategic != null) {
+    const v = String(strategic).toLowerCase();
+    data.strategic = v === "true" || v === "1" || v === "on" || v === "si" || v === "sí";
+  }
+
   // ─── source ────────────────────────────────────────────
   const source = form.get("source");
   if (source != null) {

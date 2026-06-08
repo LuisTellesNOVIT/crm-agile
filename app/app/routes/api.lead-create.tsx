@@ -45,6 +45,7 @@ export async function action({ request }: ActionFunctionArgs) {
   const dealNameRaw = String(fd.get("dealName") ?? "").trim();
   const tags = parseTags(String(fd.get("tags") ?? ""));
   const sequenceId = String(fd.get("sequenceId") ?? "").trim();
+  const strategic = ["true", "1", "on", "si", "sí"].includes(String(fd.get("strategic") ?? "").toLowerCase());
 
   // ── Validaciones ────────────────────────────────────────
   const errors: string[] = [];
@@ -184,6 +185,7 @@ export async function action({ request }: ActionFunctionArgs) {
       projectEndAt,
       closedAt: isWonOrLost ? new Date() : null,
       sequenceId: validSeqId,
+      strategic,
       workspaceId: ws.id,
       companyId: company.id,
       ownerId: me.id,

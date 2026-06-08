@@ -29,6 +29,7 @@ type FormState = {
   dealName: string;
   stage: string;
   sequence: string;
+  strategic: boolean;
 };
 
 const INITIAL: FormState = {
@@ -44,6 +45,7 @@ const INITIAL: FormState = {
   dealName: "",
   stage: "",
   sequence: "",
+  strategic: false,
 };
 
 type ActionResult = { ok?: boolean; error?: string; dealId?: string; dealName?: string; company?: string; message?: string };
@@ -108,6 +110,7 @@ export function NewLeadDrawer({ onClose }: { onClose: () => void }) {
         dealName: form.dealName,
         tags: tags.join(","),
         sequenceId: form.sequence,
+        strategic: String(form.strategic),
       },
       { method: "POST", action: "/api/lead-create" },
     );
@@ -295,6 +298,16 @@ export function NewLeadDrawer({ onClose }: { onClose: () => void }) {
                     </option>
                   ))}
                 </select>
+              </label>
+
+              <label className={`seq-testtoggle ${form.strategic ? "is-on" : ""}`}>
+                <input
+                  type="checkbox"
+                  checked={form.strategic}
+                  onChange={(e) => update({ strategic: e.target.checked })}
+                />
+                <span className="seq-testtoggle__sw" />
+                <span><b>★ Estratégico</b> — marcar este lead como prioritario.</span>
               </label>
 
               <label className="lead-form__field">

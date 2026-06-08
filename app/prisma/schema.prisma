@@ -166,6 +166,7 @@ model Deal {
   ai               Int      // 0..100 AI score
   source           String?  // fb_ads | linkedin | web | referral
   sequenceId       String?  // secuencia de seguimiento asignada manualmente (Sequence.id)
+  strategic        Boolean  @default(false) // lead/proyecto estratégico (Sí/No)
   tags             String[] @default([]) // palabras clave: sector, lead, cliente, etc.
   createdAt        DateTime @default(now())
   estimatedCloseAt DateTime

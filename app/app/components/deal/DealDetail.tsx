@@ -293,6 +293,39 @@ function DetailPane({
       <Card>
         <Card.Header label="Campos" sub="click para editar inline" />
         <Card.Body>
+          <FieldRow k="Grupo" v={
+            isAdmin ? (
+              <select
+                className="deal-detail__select"
+                value={curCoWs}
+                disabled={fetcher.state !== "idle"}
+                title="Mover el trato a otro grupo (se guarda al instante)"
+                onChange={(e) => changeGroup(e.target.value)}
+              >
+                <option value="novit">NOVIT</option>
+                <option value="sharky">SHARKY</option>
+              </select>
+            ) : (
+              <span>{curCoWs.toUpperCase()}</span>
+            )
+          } />
+          <FieldRow k="Estratégico" v={
+            <select
+              className={`deal-detail__select ${deal.strategic ? "is-strategic" : ""}`.trim()}
+              value={deal.strategic ? "true" : "false"}
+              disabled={fetcher.state !== "idle"}
+              title="¿Es un lead/proyecto estratégico?"
+              onChange={(e) =>
+                fetcher.submit(
+                  { id: deal.id, strategic: e.target.value },
+                  { method: "POST", action: "/api/deal-update" },
+                )
+              }
+            >
+              <option value="false">No</option>
+              <option value="true">★ Sí</option>
+            </select>
+          } />
           <FieldRow k="Secuencia" v={
             <select
               className="deal-detail__select"
@@ -400,22 +433,6 @@ function DetailPane({
                 }}>{deal.owner}</span>
                 <span>{owner?.name ?? deal.owner}</span>
               </span>
-            )
-          } />
-          <FieldRow k="Grupo" v={
-            isAdmin ? (
-              <select
-                className="deal-detail__select"
-                value={curCoWs}
-                disabled={fetcher.state !== "idle"}
-                title="Mover el trato a otro grupo (se guarda al instante)"
-                onChange={(e) => changeGroup(e.target.value)}
-              >
-                <option value="novit">NOVIT</option>
-                <option value="sharky">SHARKY</option>
-              </select>
-            ) : (
-              <span>{curCoWs.toUpperCase()}</span>
             )
           } />
           <FieldRow k="Empresa" v={
@@ -891,6 +908,7 @@ function DealEditModal({
   const [isRecurring, setIsRecurring] = useState(deal.isRecurring);
   const [arr, setArr] = useState(String(deal.arr || 0));
   const [source, setSource] = useState(deal.source ?? "");
+  const [strategic, setStrategic] = useState(!!deal.strategic);
   const [ai, setAi] = useState(String(deal.ai));
   const [tags, setTags] = useState<string[]>(deal.tags ?? []);
 
@@ -997,6 +1015,7 @@ function DealEditModal({
       df.set("probability", (probPct / 100).toFixed(2));
       df.set("ai", ai);
       df.set("source", source);
+      df.set("strategic", strategic ? "true" : "false");
       df.set("isRecurring", isRecurring ? "true" : "false");
       df.set("arr", arr);
       df.set("tags", tags.join(","));
@@ -1102,6 +1121,12 @@ function DealEditModal({
                 className="mono"
                 style={{ maxWidth: 160 }}
               />
+            </label>
+
+            <label className={`seq-testtoggle ${strategic ? "is-on" : ""}`} style={{ marginBottom: 10 }}>
+              <input type="checkbox" checked={strategic} onChange={(e) => setStrategic(e.target.checked)} />
+              <span className="seq-testtoggle__sw" />
+              <span><b>★ Estratégico</b> — marca este lead/proyecto como prioritario.</span>
             </label>
 
             <label className="deal-edit-modal__field">

@@ -6099,3 +6099,12 @@ textarea.emp__input { resize: vertical; }
   .prog-card { flex-direction: column; align-items: stretch; }
   .prog-card__actions { justify-content: flex-start; }
 }
+
+/* ───── Flujo de caja de proyectos (dashboard) ───── */
+.cashflow__legend { display: flex; flex-wrap: wrap; gap: 18px; font-size: 12px; color: var(--fg-3); margin-bottom: 8px; }
+.cashflow__sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: middle; }
+.cashflow__sw--setup { background: #2563eb; }
+.cashflow__sw--saas { background: #f59e0b; }
+.cashflow__svg { display: block; width: 100%; }
+/* Campo Estratégico (Sí resaltado) */
+.deal-detail__select.is-strategic { color: #b45309; font-weight: 600; }

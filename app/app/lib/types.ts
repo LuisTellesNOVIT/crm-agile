@@ -84,6 +84,7 @@ export type Deal = {
   arr: number;
   source?: string | null;
   sequence?: string | null; // Sequence.id asignada para el seguimiento (o null)
+  strategic?: boolean; // lead/proyecto estratégico (Sí/No)
   tags: string[];
   _ws?: WorkspaceId;
 };
