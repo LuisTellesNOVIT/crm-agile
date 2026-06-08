@@ -1352,16 +1352,16 @@ function CashFlowCard({ deals, currency, onOpenDeal }: { deals: Deal[]; currency
   const W = 940, H = 230, padB = 26, padT = 16, padX = 8;
   const innerW = W - padX * 2;
   const innerH = H - padB - padT;
-  // Reservamos un área a la derecha para los acumulados (6m/12m), finitos y sutiles.
-  const accumArea = 132;
-  const gap = 26;
-  const monthsArea = innerW - accumArea - gap;
-  const slot = monthsArea / data.months.length;
-  const bw = Math.min(44, slot * 0.6);
-  const accSlot = accumArea / 2;
-  const accBw = Math.min(24, accSlot * 0.5);
-  const accX0 = padX + monthsArea + gap;
-  const divX = padX + monthsArea + gap / 2;
+  // Columnas en orden: el acumulado 6m se intercala tras el 6º mes; el 12m va al final.
+  const columns: ({ kind: "month"; i: number } | { kind: "accum"; i: number })[] = [];
+  data.months.forEach((_, i) => {
+    columns.push({ kind: "month", i });
+    if (i === 5) columns.push({ kind: "accum", i: 0 });
+  });
+  columns.push({ kind: "accum", i: 1 });
+  const slot = innerW / columns.length;
+  const bw = Math.min(44, slot * 0.62);
+  const accBw = Math.min(22, slot * 0.48);
   const accMax = Math.max(1, data.accum[data.accum.length - 1].total);
   // Detalle del drawer: un mes ("m<i>") o un acumulado ("a6"/"a12").
   const detail = useMemo(() => {
@@ -1394,48 +1394,44 @@ function CashFlowCard({ deals, currency, onOpenDeal }: { deals: Deal[]; currency
           <span><i className="cashflow__sw cashflow__sw--saas" /> SaaS (proyectado 12 m) · <b>{fmtMoney(data.totSaas, currency)}</b></span>
         </div>
         <svg width="100%" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" className="cashflow__svg">
-          {data.months.map((mo, i) => {
-            const x = padX + slot * i + (slot - bw) / 2;
-            const hSetup = (mo.setup / data.max) * innerH;
-            const hSaas = (mo.saas / data.max) * innerH;
+          {columns.map((col, p) => {
+            const xc = padX + slot * p;
             const yBase = padT + innerH;
-            return (
-              <g key={i} style={{ cursor: mo.total > 0 ? "pointer" : "default" }} onClick={() => mo.total > 0 && setDetailKey(`m${i}`)}>
-                <title>{`${mo.label} ${mo.year} — clic para ver el sustento\nSetup: ${fmtMoney(mo.setup, currency)}\nSaaS: ${fmtMoney(mo.saas, currency)}\nTotal: ${fmtMoney(mo.total, currency)}`}</title>
-                <rect x={padX + slot * i} y={padT} width={slot} height={innerH + 6} fill="transparent" />
-                {mo.setup > 0 && <rect x={x} y={yBase - hSetup} width={bw} height={hSetup} rx={2} fill="#2563eb" />}
-                {mo.saas > 0 && <rect x={x} y={yBase - hSetup - hSaas} width={bw} height={hSaas} rx={2} fill="#f59e0b" />}
-                {hSetup > 15 && (
-                  <text x={x + bw / 2} y={yBase - hSetup / 2 + 3} textAnchor="middle" fontSize="9" fontFamily="var(--font-mono)" fill="#fff" pointerEvents="none">
-                    {fmtMoney(mo.setup, currency)}
-                  </text>
-                )}
-                {hSaas > 13 && (
-                  <text x={x + bw / 2} y={yBase - hSetup - hSaas / 2 + 3} textAnchor="middle" fontSize="8.5" fontFamily="var(--font-mono)" fill="#7c2d12" pointerEvents="none">
-                    {fmtMoney(mo.saas, currency)}
-                  </text>
-                )}
-                {mo.total > 0 && (
-                  <text x={x + bw / 2} y={yBase - hSetup - hSaas - 5} textAnchor="middle" fontSize="9.5" fontFamily="var(--font-mono)" fontWeight="600" fill="var(--fg-2)" pointerEvents="none">
-                    {fmtMoney(mo.total, currency)}
-                  </text>
-                )}
-                <text x={x + bw / 2} y={H - 8} textAnchor="middle" fontSize="10.5" fill="var(--fg-3)" pointerEvents="none">{mo.label}</text>
-              </g>
-            );
-          })}
-          {/* ─── Acumulados (6m / 12m): finitos y sutiles, mismo horizonte ─── */}
-          <line x1={divX} y1={padT} x2={divX} y2={padT + innerH} stroke="var(--border-2)" strokeWidth="1" strokeDasharray="3 4" />
-          {data.accum.map((a, j) => {
-            const x = accX0 + accSlot * j + (accSlot - accBw) / 2;
-            const accScaleH = innerH - 12; // deja aire arriba para la etiqueta
+            if (col.kind === "month") {
+              const mo = data.months[col.i];
+              const x = xc + (slot - bw) / 2;
+              const hSetup = (mo.setup / data.max) * innerH;
+              const hSaas = (mo.saas / data.max) * innerH;
+              return (
+                <g key={`m${col.i}`} style={{ cursor: mo.total > 0 ? "pointer" : "default" }} onClick={() => mo.total > 0 && setDetailKey(`m${col.i}`)}>
+                  <title>{`${mo.label} ${mo.year} — clic para ver el sustento\nSetup: ${fmtMoney(mo.setup, currency)}\nSaaS: ${fmtMoney(mo.saas, currency)}\nTotal: ${fmtMoney(mo.total, currency)}`}</title>
+                  <rect x={xc} y={padT} width={slot} height={innerH + 6} fill="transparent" />
+                  {mo.setup > 0 && <rect x={x} y={yBase - hSetup} width={bw} height={hSetup} rx={2} fill="#2563eb" />}
+                  {mo.saas > 0 && <rect x={x} y={yBase - hSetup - hSaas} width={bw} height={hSaas} rx={2} fill="#f59e0b" />}
+                  {hSetup > 15 && (
+                    <text x={x + bw / 2} y={yBase - hSetup / 2 + 3} textAnchor="middle" fontSize="9" fontFamily="var(--font-mono)" fill="#fff" pointerEvents="none">{fmtMoney(mo.setup, currency)}</text>
+                  )}
+                  {hSaas > 13 && (
+                    <text x={x + bw / 2} y={yBase - hSetup - hSaas / 2 + 3} textAnchor="middle" fontSize="8.5" fontFamily="var(--font-mono)" fill="#7c2d12" pointerEvents="none">{fmtMoney(mo.saas, currency)}</text>
+                  )}
+                  {mo.total > 0 && (
+                    <text x={x + bw / 2} y={yBase - hSetup - hSaas - 5} textAnchor="middle" fontSize="9.5" fontFamily="var(--font-mono)" fontWeight="600" fill="var(--fg-2)" pointerEvents="none">{fmtMoney(mo.total, currency)}</text>
+                  )}
+                  <text x={x + bw / 2} y={H - 8} textAnchor="middle" fontSize="10.5" fill="var(--fg-3)" pointerEvents="none">{mo.label}</text>
+                </g>
+              );
+            }
+            // acumulado (6m / 12m): finito, sutil, mismo horizonte
+            const a = data.accum[col.i];
+            const x = xc + (slot - accBw) / 2;
+            const accScaleH = innerH - 12;
             const hSetup = (a.setup / accMax) * accScaleH;
             const hSaas = (a.saas / accMax) * accScaleH;
-            const yBase = padT + innerH;
             return (
               <g key={a.key} style={{ cursor: "pointer" }} onClick={() => setDetailKey(a.key)}>
                 <title>{`${a.title}\nSetup: ${fmtMoney(a.setup, currency)}\nSaaS: ${fmtMoney(a.saas, currency)}\nTotal: ${fmtMoney(a.total, currency)}`}</title>
-                <rect x={accX0 + accSlot * j} y={padT} width={accSlot} height={innerH + 6} fill="transparent" />
+                <line x1={xc + 1} y1={padT + 4} x2={xc + 1} y2={yBase} stroke="var(--border-2)" strokeWidth="1" strokeDasharray="2 4" opacity={0.7} />
+                <rect x={xc} y={padT} width={slot} height={innerH + 6} fill="transparent" />
                 {a.setup > 0 && <rect x={x} y={yBase - hSetup} width={accBw} height={hSetup} rx={2} fill="#2563eb" opacity={0.3} />}
                 {a.saas > 0 && <rect x={x} y={yBase - hSetup - hSaas} width={accBw} height={hSaas} rx={2} fill="#f59e0b" opacity={0.38} />}
                 <text x={x + accBw / 2} y={yBase - hSetup - hSaas - 5} textAnchor="middle" fontSize="8.5" fontFamily="var(--font-mono)" fontWeight="500" fill="var(--fg-4)" pointerEvents="none">{fmtMoney(a.total, currency)}</text>
