@@ -1565,44 +1565,46 @@ function CashFlowTable({ deals, currency, onOpenDeal }: { deals: Deal[]; currenc
       </div>
       <div className="card__b">
         <div className="cf-table-wrap">
-          <table className="cf-table">
+          <table className="cf-table cf-table--split">
             <thead>
               <tr>
-                <th className="cf-table__proj">Proyecto</th>
-                {data.months.map((m, i) => <th key={i}>{m.label}<small>{String(m.year).slice(2)}</small></th>)}
-                <th className="cf-table__tot">Total</th>
+                <th className="cf-table__proj" rowSpan={2}>Proyecto</th>
+                {data.months.map((m, i) => <th key={i} colSpan={2} className="cf-mh">{m.label} <small>{String(m.year).slice(2)}</small></th>)}
+                <th colSpan={3} className="cf-mh cf-table__totgroup">Total</th>
+              </tr>
+              <tr>
+                {data.months.flatMap((_, i) => [
+                  <th key={`s${i}`} className="cf-sub cf-sub--setup">Setup</th>,
+                  <th key={`q${i}`} className="cf-sub cf-sub--saas">SaaS</th>,
+                ])}
+                <th className="cf-sub cf-sub--setup">Setup</th>
+                <th className="cf-sub cf-sub--saas">SaaS</th>
+                <th className="cf-sub cf-table__tot">Total</th>
               </tr>
             </thead>
             <tbody>
               {data.projects.map((p) => (
                 <tr key={p.id} onClick={() => onOpenDeal?.(p.id)} title="Abrir el trato">
-                  <td className="cf-table__proj">
-                    <b>{p.company}</b>
-                    <span>{p.name}</span>
-                    <span className="cf-table__split">
-                      <span style={{ color: "#2563eb" }}>Setup {fmtMoney(p.setupTotal, currency)}</span>
-                      {p.saasTotal > 0 && <> · <span style={{ color: "#b45309" }}>SaaS {fmtMoney(p.saasTotal, currency)}</span></>}
-                    </span>
-                  </td>
-                  {p.monthly.map((v, i) => <td key={i} className={v > 0 ? "" : "is-zero"} title={`Setup ${fmtMoney(p.setup[i], currency)} · SaaS ${fmtMoney(p.saas[i], currency)}`}>{cell(v)}</td>)}
+                  <td className="cf-table__proj"><b>{p.company}</b><span>{p.name}</span></td>
+                  {p.setup.flatMap((_, i) => [
+                    <td key={`s${i}`} className={`cf-cell--setup ${p.setup[i] > 0 ? "" : "is-zero"}`}>{cell(p.setup[i])}</td>,
+                    <td key={`q${i}`} className={`cf-cell--saas ${p.saas[i] > 0 ? "" : "is-zero"}`}>{cell(p.saas[i])}</td>,
+                  ])}
+                  <td className="cf-cell--setup cf-totsub">{cell(p.setupTotal)}</td>
+                  <td className="cf-cell--saas cf-totsub">{cell(p.saasTotal)}</td>
                   <td className="cf-table__tot">{fmtMoney(p.total, currency)}</td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
-              <tr className="cf-table__sub">
-                <td className="cf-table__proj">Setup</td>
-                {data.setupBy.map((v, i) => <td key={i} className={v > 0 ? "" : "is-zero"}>{cell(v)}</td>)}
-                <td className="cf-table__tot">{fmtMoney(data.sumSetup, currency)}</td>
-              </tr>
-              <tr className="cf-table__sub">
-                <td className="cf-table__proj">SaaS</td>
-                {data.saasBy.map((v, i) => <td key={i} className={v > 0 ? "" : "is-zero"}>{cell(v)}</td>)}
-                <td className="cf-table__tot">{fmtMoney(data.sumSaas, currency)}</td>
-              </tr>
               <tr className="cf-table__total">
                 <td className="cf-table__proj">Total mes</td>
-                {data.totalBy.map((v, i) => <td key={i}>{cell(v)}</td>)}
+                {data.months.flatMap((_, i) => [
+                  <td key={`s${i}`} className={`cf-cell--setup ${data.setupBy[i] > 0 ? "" : "is-zero"}`}>{cell(data.setupBy[i])}</td>,
+                  <td key={`q${i}`} className={`cf-cell--saas ${data.saasBy[i] > 0 ? "" : "is-zero"}`}>{cell(data.saasBy[i])}</td>,
+                ])}
+                <td className="cf-cell--setup cf-totsub">{fmtMoney(data.sumSetup, currency)}</td>
+                <td className="cf-cell--saas cf-totsub">{fmtMoney(data.sumSaas, currency)}</td>
                 <td className="cf-table__tot">{fmtMoney(data.grand, currency)}</td>
               </tr>
             </tfoot>

@@ -6151,3 +6151,18 @@ textarea.emp__input { resize: vertical; }
 .cf-table tbody tr:hover .cf-table__tot { background: #000 !important; color: #fff !important; }
 /* Desglose Setup/SaaS bajo el nombre del proyecto */
 .cf-table__split { display: block; font-family: var(--font-mono); font-size: 10px; margin-top: 3px; font-weight: 600; }
+
+/* ── Flujo de caja detallado · 2 columnas por mes (Setup / SaaS) ── */
+.cf-table--split th, .cf-table--split td { padding: 5px 9px; }
+.cf-mh { text-align: center !important; }
+.cf-table__totgroup { background: var(--bg-3) !important; }
+.cf-sub { font-size: 9.5px !important; font-weight: 600 !important; padding: 3px 8px !important; text-transform: none !important; }
+.cf-sub--setup { color: #2563eb !important; }
+.cf-sub--saas { color: #b45309 !important; }
+.cf-cell--saas { background: rgba(245, 158, 11, 0.05); border-right: 1px solid var(--border) !important; }
+.cf-table--split thead .cf-sub--saas { border-right: 1px solid var(--border) !important; }
+.cf-totsub { font-weight: 600; background: var(--bg-2); }
+.cf-table--split tbody tr:hover .cf-cell--saas { background: rgba(245, 158, 11, 0.12); }
+/* cabecera de 2 filas (offsets sticky) */
+.cf-table--split thead tr:nth-child(1) th { top: 0; height: 26px; }
+.cf-table--split thead tr:nth-child(2) th { top: 26px; }
