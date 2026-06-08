@@ -1529,11 +1529,6 @@ export default function DashboardRoute() {
         </div>
       </div>
 
-      {/* ───── Flujo de caja de proyectos (setup + SaaS 12m) ───── */}
-      <div className="dash__row" style={{ gridTemplateColumns: "1fr" }}>
-        <CashFlowCard deals={ws.deals} currency={currency} />
-      </div>
-
       {/* ───── AI Forecast · Pipeline weighted ───── */}
       <div className="dash__row" style={{ gridTemplateColumns: "1fr" }}>
         <div className="card">
@@ -1575,6 +1570,11 @@ export default function DashboardRoute() {
         currency={currency}
         onOpenDeal={(id) => setSelectedDeal(id)}
       />
+
+      {/* ───── Flujo de caja de proyectos (setup + SaaS 12m) ───── */}
+      <div className="dash__row" style={{ gridTemplateColumns: "1fr" }}>
+        <CashFlowCard deals={ws.deals} currency={currency} />
+      </div>
 
       {/* ───── Facturación mensual: SETUP por etapa + SaaS (charts independientes) ───── */}
       <div className="dash__row" style={{ gridTemplateColumns: "1fr 1fr" }}>
