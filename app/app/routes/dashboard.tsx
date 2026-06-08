@@ -1281,59 +1281,63 @@ function AIRecsCard({
    el SaaS (MRR) se proyecta 12 meses desde el go-live (fin de proyecto).
    Considera todos los proyectos activos (no perdidos).
    ============================================================ */
-function CashFlowCard({ deals, currency }: { deals: Deal[]; currency: Currency }) {
+type CFRow = { id: string; company: string; name: string; setup: number; saas: number };
+function CashFlowCard({ deals, currency, onOpenDeal }: { deals: Deal[]; currency: Currency; onOpenDeal?: (id: string) => void }) {
+  const [openMonth, setOpenMonth] = useState<number | null>(null);
   const data = useMemo(() => {
     const today = new Date();
     const now0 = today.getFullYear() * 12 + today.getMonth();
     const N = 12;
     const mk = (d: Date) => d.getFullYear() * 12 + d.getMonth();
-    const setup = new Array(N).fill(0);
-    const saas = new Array(N).fill(0);
-    let projects = 0;
+    const rowsByMonth: Map<string, CFRow>[] = Array.from({ length: N }, () => new Map());
+    const projSet = new Set<string>();
     for (const d of deals) {
       if (d.stage === "lost" || !d.strategic) continue; // solo proyectos ESTRATÉGICOS
       const start = d.projectStartAt ? new Date(d.projectStartAt) : null;
       const end = d.projectEndAt ? new Date(d.projectEndAt) : null;
-      let counted = false;
+      const add = (i: number, sAdd: number, qAdd: number) => {
+        const m = rowsByMonth[i];
+        const r = m.get(d.id) ?? { id: d.id, company: d.company, name: d.name, setup: 0, saas: 0 };
+        r.setup += sAdd; r.saas += qAdd;
+        m.set(d.id, r);
+        projSet.add(d.id);
+      };
       if (start && end && d.value > 0) {
         const sM = mk(start), eM = mk(end);
         const dur = Math.max(1, eM - sM + 1);
         const per = d.value / dur;
-        for (let m = sM; m <= eM; m++) {
-          const i = m - now0;
-          if (i >= 0 && i < N) { setup[i] += per; counted = true; }
-        }
+        for (let m = sM; m <= eM; m++) { const i = m - now0; if (i >= 0 && i < N) add(i, per, 0); }
       }
       if (d.isRecurring && d.arr > 0) {
         const goLive = end ? mk(end) : start ? mk(start) : now0;
         const monthly = d.arr / 12;
-        for (let k = 0; k < 12; k++) {
-          const i = goLive + k - now0;
-          if (i >= 0 && i < N) { saas[i] += monthly; counted = true; }
-        }
+        for (let k = 0; k < 12; k++) { const i = goLive + k - now0; if (i >= 0 && i < N) add(i, 0, monthly); }
       }
-      if (counted) projects++;
     }
     const months = Array.from({ length: N }, (_, i) => {
       const m = now0 + i;
       const dt = new Date(Math.floor(m / 12), m % 12, 1);
+      const rows = [...rowsByMonth[i].values()].sort((a, b) => b.setup + b.saas - (a.setup + a.saas));
+      const setup = rows.reduce((a, r) => a + r.setup, 0);
+      const saas = rows.reduce((a, r) => a + r.saas, 0);
       return {
         label: dt.toLocaleDateString("es", { month: "short" }).replace(".", ""),
         year: dt.getFullYear(),
-        setup: setup[i], saas: saas[i], total: setup[i] + saas[i],
+        setup, saas, total: setup + saas, rows,
       };
     });
     const max = Math.max(1, ...months.map((x) => x.total));
-    const totSetup = setup.reduce((a, b) => a + b, 0);
-    const totSaas = saas.reduce((a, b) => a + b, 0);
-    return { months, max, totSetup, totSaas, total: totSetup + totSaas, projects };
+    const totSetup = months.reduce((a, m) => a + m.setup, 0);
+    const totSaas = months.reduce((a, m) => a + m.saas, 0);
+    return { months, max, totSetup, totSaas, total: totSetup + totSaas, projects: projSet.size };
   }, [deals]);
 
-  const W = 940, H = 210, padB = 26, padT = 14, padX = 8;
+  const W = 940, H = 230, padB = 26, padT = 16, padX = 8;
   const innerW = W - padX * 2;
   const innerH = H - padB - padT;
   const slot = innerW / data.months.length;
   const bw = Math.min(48, slot * 0.6);
+  const detail = openMonth != null ? data.months[openMonth] : null;
 
   return (
     <div className="card">
@@ -1361,23 +1365,85 @@ function CashFlowCard({ deals, currency }: { deals: Deal[]; currency: Currency }
             const hSaas = (mo.saas / data.max) * innerH;
             const yBase = padT + innerH;
             return (
-              <g key={i}>
-                <title>{`${mo.label} ${mo.year}\nSetup: ${fmtMoney(mo.setup, currency)}\nSaaS: ${fmtMoney(mo.saas, currency)}\nTotal: ${fmtMoney(mo.total, currency)}`}</title>
+              <g key={i} style={{ cursor: mo.total > 0 ? "pointer" : "default" }} onClick={() => mo.total > 0 && setOpenMonth(i)}>
+                <title>{`${mo.label} ${mo.year} — clic para ver el sustento\nSetup: ${fmtMoney(mo.setup, currency)}\nSaaS: ${fmtMoney(mo.saas, currency)}\nTotal: ${fmtMoney(mo.total, currency)}`}</title>
+                <rect x={padX + slot * i} y={padT} width={slot} height={innerH + 6} fill="transparent" />
                 {mo.setup > 0 && <rect x={x} y={yBase - hSetup} width={bw} height={hSetup} rx={2} fill="#2563eb" />}
                 {mo.saas > 0 && <rect x={x} y={yBase - hSetup - hSaas} width={bw} height={hSaas} rx={2} fill="#f59e0b" />}
+                {hSetup > 15 && (
+                  <text x={x + bw / 2} y={yBase - hSetup / 2 + 3} textAnchor="middle" fontSize="9" fontFamily="var(--font-mono)" fill="#fff" pointerEvents="none">
+                    {fmtMoney(mo.setup, currency)}
+                  </text>
+                )}
+                {hSaas > 13 && (
+                  <text x={x + bw / 2} y={yBase - hSetup - hSaas / 2 + 3} textAnchor="middle" fontSize="8.5" fontFamily="var(--font-mono)" fill="#7c2d12" pointerEvents="none">
+                    {fmtMoney(mo.saas, currency)}
+                  </text>
+                )}
                 {mo.total > 0 && (
-                  <text x={x + bw / 2} y={yBase - hSetup - hSaas - 5} textAnchor="middle" fontSize="9" fontFamily="var(--font-mono)" fill="var(--fg-3)">
+                  <text x={x + bw / 2} y={yBase - hSetup - hSaas - 5} textAnchor="middle" fontSize="9.5" fontFamily="var(--font-mono)" fontWeight="600" fill="var(--fg-2)" pointerEvents="none">
                     {fmtMoney(mo.total, currency)}
                   </text>
                 )}
-                <text x={x + bw / 2} y={H - 8} textAnchor="middle" fontSize="10.5" fill="var(--fg-3)">{mo.label}</text>
+                <text x={x + bw / 2} y={H - 8} textAnchor="middle" fontSize="10.5" fill="var(--fg-3)" pointerEvents="none">{mo.label}</text>
               </g>
             );
           })}
         </svg>
+        <div className="cashflow__hint">Hacé clic en un mes para ver el sustento (proyectos que lo componen).</div>
         </>
         )}
       </div>
+
+      {detail && (
+        <div className="drawer-backdrop" onClick={() => setOpenMonth(null)}>
+          <aside className="ai-drawer kpi-drawer" style={{ width: "min(560px, 100vw)" }} onClick={(e) => e.stopPropagation()}>
+            <header className="ai-drawer__head" style={{ padding: "0 14px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ width: 28, height: 28, borderRadius: 6, background: "var(--success)", color: "#fff", display: "grid", placeItems: "center" }}>
+                  <Icon name="dollar" size={14} />
+                </span>
+                <div>
+                  <div style={{ fontWeight: 600 }}>Flujo de caja · {detail.label} {detail.year}</div>
+                  <div style={{ fontSize: 10, color: "var(--fg-3)", fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                    Sustento · proyectos estratégicos del mes
+                  </div>
+                </div>
+              </div>
+              <button type="button" className="btn btn--icon" onClick={() => setOpenMonth(null)} aria-label="Cerrar">
+                <Icon name="x" size={14} />
+              </button>
+            </header>
+            <div className="ai-drawer__msgs" style={{ gap: 12, padding: 14 }}>
+              <div className="kpi-drawer__headline">
+                <div className="kpi-drawer__head-label">Total del mes</div>
+                <div className="kpi-drawer__head-value">{fmtMoney(detail.total, currency)}</div>
+                <div className="kpi-drawer__head-sub">
+                  <span style={{ color: "#2563eb" }}>Setup {fmtMoney(detail.setup, currency)}</span> ·{" "}
+                  <span style={{ color: "#b45309" }}>SaaS {fmtMoney(detail.saas, currency)}</span> · {detail.rows.length} proyecto(s)
+                </div>
+              </div>
+              <div className="kpi-drawer__list">
+                {detail.rows.map((r) => (
+                  <div key={r.id} className="kpi-drawer__row" onClick={() => onOpenDeal?.(r.id)}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="kpi-drawer__row-name">{r.company}</div>
+                      <div className="kpi-drawer__row-sub">{r.name}</div>
+                    </div>
+                    <span style={{ textAlign: "right", display: "flex", flexDirection: "column", gap: 2 }}>
+                      {r.setup > 0 && <span className="mono" style={{ fontSize: 11, color: "#2563eb" }}>Setup {fmtMoney(r.setup, currency)}</span>}
+                      {r.saas > 0 && <span className="mono" style={{ fontSize: 11, color: "#b45309" }}>SaaS {fmtMoney(r.saas, currency)}</span>}
+                    </span>
+                  </div>
+                ))}
+                {detail.rows.length === 0 && (
+                  <div style={{ padding: 16, textAlign: "center", color: "var(--fg-3)", fontSize: 13 }}>Sin proyectos este mes</div>
+                )}
+              </div>
+            </div>
+          </aside>
+        </div>
+      )}
     </div>
   );
 }
@@ -1582,7 +1648,7 @@ export default function DashboardRoute() {
 
       {/* ───── Flujo de caja de proyectos (setup + SaaS 12m) ───── */}
       <div className="dash__row" style={{ gridTemplateColumns: "1fr" }}>
-        <CashFlowCard deals={ws.deals} currency={currency} />
+        <CashFlowCard deals={ws.deals} currency={currency} onOpenDeal={(id) => setSelectedDeal(id)} />
       </div>
 
       {/* ───── Facturación mensual: SETUP por etapa + SaaS (charts independientes) ───── */}
