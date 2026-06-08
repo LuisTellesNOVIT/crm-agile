@@ -1052,6 +1052,7 @@ function ListTable({
         <span className="pipe-list-table__th pipe-list-table__th--num">#</span>
         {onSort ? <SortHead k="company">Empresa</SortHead> : <span className="pipe-list-table__th">Empresa</span>}
         <span className="pipe-list-table__th">Trato</span>
+        <span className="pipe-list-table__th pipe-list-table__th--center" title="Estratégico">★</span>
         {!hideStageColumn && (
           onSort ? <SortHead k="stage">Etapa</SortHead> : <span className="pipe-list-table__th">Etapa</span>
         )}
@@ -1146,6 +1147,9 @@ function ListRow({
             )}
           </span>
         )}
+      </span>
+      <span className="pipe-list-table__cell pipe-list-table__cell--center" title={deal.strategic ? "Estratégico" : "No estratégico"}>
+        {deal.strategic ? <span className="pipe-strat">★</span> : <span style={{ color: "var(--fg-4)" }}>—</span>}
       </span>
       {!hideStageColumn && (
         <span

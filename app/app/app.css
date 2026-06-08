@@ -2984,7 +2984,7 @@ a.nav-item.is-active { color: var(--fg); }
 }
 .pipe-list-table__row {
   display: grid;
-  grid-template-columns: 34px 180px 1fr 170px 56px 110px 96px 70px 70px;
+  grid-template-columns: 34px 180px 1fr 54px 170px 56px 110px 96px 70px 70px;
   gap: 10px;
   padding: 10px 14px;
   border-bottom: 1px solid var(--border-2);
@@ -2997,7 +2997,7 @@ a.nav-item.is-active { color: var(--fg); }
   background: var(--bg-2);
 }
 .pipe-list-table__row.no-stage-col {
-  grid-template-columns: 34px 180px 1fr 56px 110px 96px 70px 70px;
+  grid-template-columns: 34px 180px 1fr 54px 56px 110px 96px 70px 70px;
 }
 /* Columna correlativo (#) — número de orden visual del lead */
 .pipe-list-table__cell--num {
@@ -3253,10 +3253,10 @@ a.nav-item.is-active { color: var(--fg); }
 /* Responsive: en mobile, columnas en stack */
 @media (max-width: 900px) {
   .pipe-list-table__row {
-    grid-template-columns: 28px 1fr 1fr 100px 56px;
+    grid-template-columns: 28px 1fr 1fr 44px 100px 56px;
   }
   .pipe-list-table__row.no-stage-col {
-    grid-template-columns: 28px 1fr 1fr 100px;
+    grid-template-columns: 28px 1fr 1fr 44px 100px;
   }
   .pipe-list-table__cell--right.pipe-list-table__age,
   .pipe-list-table__cell--right .pipe-list-table__ai { display: none; }
@@ -6109,3 +6109,4 @@ textarea.emp__input { resize: vertical; }
 /* Campo Estratégico (Sí resaltado) */
 .deal-detail__select.is-strategic { color: #b45309; font-weight: 600; }
 .cashflow__empty { padding: 26px 16px; text-align: center; color: var(--fg-3); font-size: 13px; line-height: 1.6; border: 1px dashed var(--border); border-radius: 10px; background: var(--bg-2); }
+.pipe-strat { color: #f59e0b; font-weight: 700; }
