@@ -6113,3 +6113,12 @@ textarea.emp__input { resize: vertical; }
 .cashflow__hint { margin-top: 6px; font-size: 11.5px; color: var(--fg-4); text-align: center; }
 .cashflow__svg g[style*="pointer"]:hover rect[fill="#2563eb"],
 .cashflow__svg g[style*="pointer"]:hover rect[fill="#f59e0b"] { filter: brightness(1.08); }
+.cashflow__accum { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border-2); display: flex; align-items: flex-end; gap: 20px; flex-wrap: wrap; }
+.cashflow__accum-label { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--fg-4); align-self: center; }
+.cashflow__accum-bars { display: flex; align-items: flex-end; gap: 24px; }
+.cashflow__accum-bar { display: flex; flex-direction: column; align-items: center; gap: 4px; background: none; border: none; cursor: pointer; padding: 0; }
+.cashflow__accum-val { font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: var(--fg-2); }
+.cashflow__accum-col { width: 56px; border-radius: 4px; overflow: hidden; display: flex; flex-direction: column; box-shadow: var(--shadow-sm); }
+.cashflow__accum-col > span { display: block; min-height: 3px; }
+.cashflow__accum-name { font-size: 11.5px; color: var(--fg-3); font-weight: 600; }
+.cashflow__accum-bar:hover .cashflow__accum-col { filter: brightness(1.06); }

@@ -1283,7 +1283,7 @@ function AIRecsCard({
    ============================================================ */
 type CFRow = { id: string; company: string; name: string; setup: number; saas: number };
 function CashFlowCard({ deals, currency, onOpenDeal }: { deals: Deal[]; currency: Currency; onOpenDeal?: (id: string) => void }) {
-  const [openMonth, setOpenMonth] = useState<number | null>(null);
+  const [detailKey, setDetailKey] = useState<string | null>(null);
   const data = useMemo(() => {
     const today = new Date();
     const now0 = today.getFullYear() * 12 + today.getMonth();
@@ -1329,7 +1329,24 @@ function CashFlowCard({ deals, currency, onOpenDeal }: { deals: Deal[]; currency
     const max = Math.max(1, ...months.map((x) => x.total));
     const totSetup = months.reduce((a, m) => a + m.setup, 0);
     const totSaas = months.reduce((a, m) => a + m.saas, 0);
-    return { months, max, totSetup, totSaas, total: totSetup + totSaas, projects: projSet.size };
+    // Acumulados por rango — barras resumen a 6 y 12 meses.
+    const accRange = (from: number, to: number) => {
+      const map = new Map<string, CFRow>();
+      for (let i = from; i <= to && i < N; i++) {
+        for (const r of rowsByMonth[i].values()) {
+          const e = map.get(r.id) ?? { id: r.id, company: r.company, name: r.name, setup: 0, saas: 0 };
+          e.setup += r.setup; e.saas += r.saas; map.set(r.id, e);
+        }
+      }
+      const rows = [...map.values()].sort((a, b) => b.setup + b.saas - (a.setup + a.saas));
+      const s = rows.reduce((a, r) => a + r.setup, 0), q = rows.reduce((a, r) => a + r.saas, 0);
+      return { setup: s, saas: q, total: s + q, rows };
+    };
+    const accum = [
+      { key: "a6", label: "6 m", title: `Acumulado 6 meses · ${months[0].label}–${months[Math.min(5, N - 1)].label}`, ...accRange(0, Math.min(5, N - 1)) },
+      { key: "a12", label: "12 m", title: `Acumulado 12 meses · ${months[0].label}–${months[N - 1].label}`, ...accRange(0, N - 1) },
+    ];
+    return { months, accum, max, totSetup, totSaas, total: totSetup + totSaas, projects: projSet.size };
   }, [deals]);
 
   const W = 940, H = 230, padB = 26, padT = 16, padX = 8;
@@ -1337,7 +1354,16 @@ function CashFlowCard({ deals, currency, onOpenDeal }: { deals: Deal[]; currency
   const innerH = H - padB - padT;
   const slot = innerW / data.months.length;
   const bw = Math.min(48, slot * 0.6);
-  const detail = openMonth != null ? data.months[openMonth] : null;
+  // Detalle del drawer: un mes ("m<i>") o un acumulado ("a6"/"a12").
+  const detail = useMemo(() => {
+    if (detailKey == null) return null;
+    if (detailKey.startsWith("m")) {
+      const mo = data.months[+detailKey.slice(1)];
+      return mo ? { title: `Flujo de caja · ${mo.label} ${mo.year}`, setup: mo.setup, saas: mo.saas, total: mo.total, rows: mo.rows } : null;
+    }
+    const a = data.accum.find((x) => x.key === detailKey);
+    return a ? { title: a.title, setup: a.setup, saas: a.saas, total: a.total, rows: a.rows } : null;
+  }, [detailKey, data]);
 
   return (
     <div className="card">
@@ -1365,7 +1391,7 @@ function CashFlowCard({ deals, currency, onOpenDeal }: { deals: Deal[]; currency
             const hSaas = (mo.saas / data.max) * innerH;
             const yBase = padT + innerH;
             return (
-              <g key={i} style={{ cursor: mo.total > 0 ? "pointer" : "default" }} onClick={() => mo.total > 0 && setOpenMonth(i)}>
+              <g key={i} style={{ cursor: mo.total > 0 ? "pointer" : "default" }} onClick={() => mo.total > 0 && setDetailKey(`m${i}`)}>
                 <title>{`${mo.label} ${mo.year} — clic para ver el sustento\nSetup: ${fmtMoney(mo.setup, currency)}\nSaaS: ${fmtMoney(mo.saas, currency)}\nTotal: ${fmtMoney(mo.total, currency)}`}</title>
                 <rect x={padX + slot * i} y={padT} width={slot} height={innerH + 6} fill="transparent" />
                 {mo.setup > 0 && <rect x={x} y={yBase - hSetup} width={bw} height={hSetup} rx={2} fill="#2563eb" />}
@@ -1390,13 +1416,38 @@ function CashFlowCard({ deals, currency, onOpenDeal }: { deals: Deal[]; currency
             );
           })}
         </svg>
-        <div className="cashflow__hint">Hacé clic en un mes para ver el sustento (proyectos que lo componen).</div>
+        <div className="cashflow__accum">
+          <span className="cashflow__accum-label">Acumulado</span>
+          <div className="cashflow__accum-bars">
+            {data.accum.map((a) => {
+              const accMax = Math.max(1, data.accum[data.accum.length - 1].total);
+              const h = Math.max(14, (a.total / accMax) * 110);
+              return (
+                <button
+                  key={a.key}
+                  type="button"
+                  className="cashflow__accum-bar"
+                  onClick={() => setDetailKey(a.key)}
+                  title={`${a.title}\nSetup ${fmtMoney(a.setup, currency)} · SaaS ${fmtMoney(a.saas, currency)} · Total ${fmtMoney(a.total, currency)}`}
+                >
+                  <span className="cashflow__accum-val">{fmtMoney(a.total, currency)}</span>
+                  <span className="cashflow__accum-col" style={{ height: h }}>
+                    {a.saas > 0 && <span style={{ flex: a.saas, background: "#f59e0b" }} />}
+                    {a.setup > 0 && <span style={{ flex: a.setup, background: "#2563eb" }} />}
+                  </span>
+                  <span className="cashflow__accum-name">{a.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          <span className="cashflow__hint" style={{ margin: 0, textAlign: "left" }}>Clic en un mes o en un acumulado para ver su sustento.</span>
+        </div>
         </>
         )}
       </div>
 
       {detail && (
-        <div className="drawer-backdrop" onClick={() => setOpenMonth(null)}>
+        <div className="drawer-backdrop" onClick={() => setDetailKey(null)}>
           <aside className="ai-drawer kpi-drawer" style={{ width: "min(560px, 100vw)" }} onClick={(e) => e.stopPropagation()}>
             <header className="ai-drawer__head" style={{ padding: "0 14px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -1404,13 +1455,13 @@ function CashFlowCard({ deals, currency, onOpenDeal }: { deals: Deal[]; currency
                   <Icon name="dollar" size={14} />
                 </span>
                 <div>
-                  <div style={{ fontWeight: 600 }}>Flujo de caja · {detail.label} {detail.year}</div>
+                  <div style={{ fontWeight: 600 }}>{detail.title}</div>
                   <div style={{ fontSize: 10, color: "var(--fg-3)", fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
                     Sustento · proyectos estratégicos del mes
                   </div>
                 </div>
               </div>
-              <button type="button" className="btn btn--icon" onClick={() => setOpenMonth(null)} aria-label="Cerrar">
+              <button type="button" className="btn btn--icon" onClick={() => setDetailKey(null)} aria-label="Cerrar">
                 <Icon name="x" size={14} />
               </button>
             </header>
