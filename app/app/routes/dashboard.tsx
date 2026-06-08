@@ -1291,7 +1291,7 @@ function CashFlowCard({ deals, currency }: { deals: Deal[]; currency: Currency }
     const saas = new Array(N).fill(0);
     let projects = 0;
     for (const d of deals) {
-      if (d.stage === "lost") continue;
+      if (d.stage === "lost" || !d.strategic) continue; // solo proyectos ESTRATÉGICOS
       const start = d.projectStartAt ? new Date(d.projectStartAt) : null;
       const end = d.projectEndAt ? new Date(d.projectEndAt) : null;
       let counted = false;
@@ -1339,10 +1339,17 @@ function CashFlowCard({ deals, currency }: { deals: Deal[]; currency: Currency }
     <div className="card">
       <div className="card__h">
         <Icon name="dollar" size={14} style={{ color: "var(--success)" }} />
-        <span style={{ fontWeight: 600 }}>Flujo de caja de proyectos · próximos 12 meses</span>
-        <span className="card__sub">{data.projects} proyectos · Σ {fmtMoney(data.total, currency)}</span>
+        <span style={{ fontWeight: 600 }}>Flujo de caja · proyectos estratégicos · próximos 12 meses</span>
+        <span className="card__sub">★ {data.projects} estratégicos · Σ {fmtMoney(data.total, currency)}</span>
       </div>
       <div className="card__b">
+        {data.total <= 0 ? (
+          <div className="cashflow__empty">
+            No hay proyectos <b>Estratégicos</b> con fechas/valor en los próximos 12 meses.
+            <br />Marcá leads con <b>Estratégico = Sí</b> (en el detalle del trato) para verlos en este flujo de caja.
+          </div>
+        ) : (
+        <>
         <div className="cashflow__legend">
           <span><i className="cashflow__sw cashflow__sw--setup" /> Setup (entre inicio y fin) · <b>{fmtMoney(data.totSetup, currency)}</b></span>
           <span><i className="cashflow__sw cashflow__sw--saas" /> SaaS (proyectado 12 m) · <b>{fmtMoney(data.totSaas, currency)}</b></span>
@@ -1368,6 +1375,8 @@ function CashFlowCard({ deals, currency }: { deals: Deal[]; currency: Currency }
             );
           })}
         </svg>
+        </>
+        )}
       </div>
     </div>
   );

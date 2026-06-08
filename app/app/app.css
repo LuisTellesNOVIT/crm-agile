@@ -6108,3 +6108,4 @@ textarea.emp__input { resize: vertical; }
 .cashflow__svg { display: block; width: 100%; }
 /* Campo Estratégico (Sí resaltado) */
 .deal-detail__select.is-strategic { color: #b45309; font-weight: 600; }
+.cashflow__empty { padding: 26px 16px; text-align: center; color: var(--fg-3); font-size: 13px; line-height: 1.6; border: 1px dashed var(--border); border-radius: 10px; background: var(--bg-2); }
