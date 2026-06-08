@@ -6166,3 +6166,21 @@ textarea.emp__input { resize: vertical; }
 /* cabecera de 2 filas (offsets sticky) */
 .cf-table--split thead tr:nth-child(1) th { top: 0; height: 26px; }
 .cf-table--split thead tr:nth-child(2) th { top: 26px; }
+
+/* ── Drawer del flujo de caja: Setup y SaaS en dos columnas ── */
+.cf-drawer { border: 1px solid var(--border-2); border-radius: 10px; overflow: hidden; }
+.cf-drawer__row { display: grid; grid-template-columns: 1fr 96px 96px; align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--border-2); cursor: pointer; }
+.cf-drawer__row:last-child { border-bottom: 0; }
+.cf-drawer__row:hover { background: var(--bg-2); }
+.cf-drawer__row--head { cursor: default; background: var(--bg-2); font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
+.cf-drawer__row--head, .cf-drawer__row--head:hover { background: var(--bg-2); }
+.cf-drawer__row--head > span:first-child { color: var(--fg-3); }
+.cf-drawer__row--total, .cf-drawer__row--total:hover { cursor: default; background: var(--bg-3); }
+.cf-drawer__row--total b { font-size: 12.5px; }
+.cf-drawer__proj { min-width: 0; display: flex; flex-direction: column; }
+.cf-drawer__proj b { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cf-drawer__proj small { font-size: 11px; color: var(--fg-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cf-drawer__setup, .cf-drawer__saas { text-align: right; font-family: var(--font-mono); font-size: 12px; font-weight: 600; }
+.cf-drawer__setup { color: #2563eb; }
+.cf-drawer__saas { color: #b45309; }
+.cf-drawer__setup.is-zero, .cf-drawer__saas.is-zero { color: var(--fg-4); font-weight: 400; }

@@ -1473,19 +1473,27 @@ function CashFlowCard({ deals, currency, onOpenDeal }: { deals: Deal[]; currency
                   <span style={{ color: "#b45309" }}>SaaS {fmtMoney(detail.saas, currency)}</span> · {detail.rows.length} proyecto(s)
                 </div>
               </div>
-              <div className="kpi-drawer__list">
+              <div className="cf-drawer">
+                <div className="cf-drawer__row cf-drawer__row--head">
+                  <span>Proyecto</span>
+                  <span className="cf-drawer__setup">Setup</span>
+                  <span className="cf-drawer__saas">SaaS</span>
+                </div>
                 {detail.rows.map((r) => (
-                  <div key={r.id} className="kpi-drawer__row" onClick={() => onOpenDeal?.(r.id)}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div className="kpi-drawer__row-name">{r.company}</div>
-                      <div className="kpi-drawer__row-sub">{r.name}</div>
-                    </div>
-                    <span style={{ textAlign: "right", display: "flex", flexDirection: "column", gap: 2 }}>
-                      {r.setup > 0 && <span className="mono" style={{ fontSize: 11, color: "#2563eb" }}>Setup {fmtMoney(r.setup, currency)}</span>}
-                      {r.saas > 0 && <span className="mono" style={{ fontSize: 11, color: "#b45309" }}>SaaS {fmtMoney(r.saas, currency)}</span>}
+                  <div key={r.id} className="cf-drawer__row" onClick={() => onOpenDeal?.(r.id)}>
+                    <span className="cf-drawer__proj">
+                      <b>{r.company}</b>
+                      <small>{r.name}</small>
                     </span>
+                    <span className={`cf-drawer__setup ${r.setup > 0 ? "" : "is-zero"}`}>{r.setup > 0 ? fmtMoney(r.setup, currency) : "—"}</span>
+                    <span className={`cf-drawer__saas ${r.saas > 0 ? "" : "is-zero"}`}>{r.saas > 0 ? fmtMoney(r.saas, currency) : "—"}</span>
                   </div>
                 ))}
+                <div className="cf-drawer__row cf-drawer__row--total">
+                  <span className="cf-drawer__proj"><b>Total del mes</b></span>
+                  <span className="cf-drawer__setup">{fmtMoney(detail.setup, currency)}</span>
+                  <span className="cf-drawer__saas">{fmtMoney(detail.saas, currency)}</span>
+                </div>
                 {detail.rows.length === 0 && (
                   <div style={{ padding: 16, textAlign: "center", color: "var(--fg-3)", fontSize: 13 }}>Sin proyectos este mes</div>
                 )}
@@ -1565,46 +1573,37 @@ function CashFlowTable({ deals, currency, onOpenDeal }: { deals: Deal[]; currenc
       </div>
       <div className="card__b">
         <div className="cf-table-wrap">
-          <table className="cf-table cf-table--split">
+          <table className="cf-table">
             <thead>
               <tr>
-                <th className="cf-table__proj" rowSpan={2}>Proyecto</th>
-                {data.months.map((m, i) => <th key={i} colSpan={2} className="cf-mh">{m.label} <small>{String(m.year).slice(2)}</small></th>)}
-                <th colSpan={3} className="cf-mh cf-table__totgroup">Total</th>
-              </tr>
-              <tr>
-                {data.months.flatMap((_, i) => [
-                  <th key={`s${i}`} className="cf-sub cf-sub--setup">Setup</th>,
-                  <th key={`q${i}`} className="cf-sub cf-sub--saas">SaaS</th>,
-                ])}
-                <th className="cf-sub cf-sub--setup">Setup</th>
-                <th className="cf-sub cf-sub--saas">SaaS</th>
-                <th className="cf-sub cf-table__tot">Total</th>
+                <th className="cf-table__proj">Proyecto</th>
+                {data.months.map((m, i) => <th key={i}>{m.label}<small>{String(m.year).slice(2)}</small></th>)}
+                <th className="cf-table__tot">Total</th>
               </tr>
             </thead>
             <tbody>
               {data.projects.map((p) => (
                 <tr key={p.id} onClick={() => onOpenDeal?.(p.id)} title="Abrir el trato">
                   <td className="cf-table__proj"><b>{p.company}</b><span>{p.name}</span></td>
-                  {p.setup.flatMap((_, i) => [
-                    <td key={`s${i}`} className={`cf-cell--setup ${p.setup[i] > 0 ? "" : "is-zero"}`}>{cell(p.setup[i])}</td>,
-                    <td key={`q${i}`} className={`cf-cell--saas ${p.saas[i] > 0 ? "" : "is-zero"}`}>{cell(p.saas[i])}</td>,
-                  ])}
-                  <td className="cf-cell--setup cf-totsub">{cell(p.setupTotal)}</td>
-                  <td className="cf-cell--saas cf-totsub">{cell(p.saasTotal)}</td>
+                  {p.monthly.map((v, i) => <td key={i} className={v > 0 ? "" : "is-zero"} title={`Setup ${fmtMoney(p.setup[i], currency)} · SaaS ${fmtMoney(p.saas[i], currency)}`}>{cell(v)}</td>)}
                   <td className="cf-table__tot">{fmtMoney(p.total, currency)}</td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
+              <tr className="cf-table__sub">
+                <td className="cf-table__proj">Setup</td>
+                {data.setupBy.map((v, i) => <td key={i} className={v > 0 ? "" : "is-zero"}>{cell(v)}</td>)}
+                <td className="cf-table__tot">{fmtMoney(data.sumSetup, currency)}</td>
+              </tr>
+              <tr className="cf-table__sub">
+                <td className="cf-table__proj">SaaS</td>
+                {data.saasBy.map((v, i) => <td key={i} className={v > 0 ? "" : "is-zero"}>{cell(v)}</td>)}
+                <td className="cf-table__tot">{fmtMoney(data.sumSaas, currency)}</td>
+              </tr>
               <tr className="cf-table__total">
                 <td className="cf-table__proj">Total mes</td>
-                {data.months.flatMap((_, i) => [
-                  <td key={`s${i}`} className={`cf-cell--setup ${data.setupBy[i] > 0 ? "" : "is-zero"}`}>{cell(data.setupBy[i])}</td>,
-                  <td key={`q${i}`} className={`cf-cell--saas ${data.saasBy[i] > 0 ? "" : "is-zero"}`}>{cell(data.saasBy[i])}</td>,
-                ])}
-                <td className="cf-cell--setup cf-totsub">{fmtMoney(data.sumSetup, currency)}</td>
-                <td className="cf-cell--saas cf-totsub">{fmtMoney(data.sumSaas, currency)}</td>
+                {data.totalBy.map((v, i) => <td key={i}>{cell(v)}</td>)}
                 <td className="cf-table__tot">{fmtMoney(data.grand, currency)}</td>
               </tr>
             </tfoot>
