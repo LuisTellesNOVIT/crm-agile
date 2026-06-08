@@ -6143,3 +6143,11 @@ textarea.emp__input { resize: vertical; }
 .cf-table tfoot .cf-table__proj { z-index: 3; }
 .cf-table tfoot .cf-table__sub td { color: var(--fg-2); font-weight: 500; }
 .cf-table tfoot .cf-table__total td { background: var(--bg-3); color: var(--fg); }
+
+/* Columna Total en negro · números blancos */
+.cf-table .cf-table__tot { background: var(--fg) !important; color: #fff !important; font-weight: 700; }
+.cf-table thead .cf-table__tot,
+.cf-table tfoot .cf-table__tot { background: var(--fg) !important; color: #fff !important; }
+.cf-table tbody tr:hover .cf-table__tot { background: #000 !important; color: #fff !important; }
+/* Desglose Setup/SaaS bajo el nombre del proyecto */
+.cf-table__split { display: block; font-family: var(--font-mono); font-size: 10px; margin-top: 3px; font-weight: 600; }

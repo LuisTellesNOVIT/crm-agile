@@ -1539,7 +1539,7 @@ function CashFlowTable({ deals, currency, onOpenDeal }: { deals: Deal[]; currenc
     const projects = [...map.values()]
       .map((p) => {
         const monthly = p.setup.map((s, i) => s + p.saas[i]);
-        return { ...p, monthly, total: monthly.reduce((a, b) => a + b, 0) };
+        return { ...p, monthly, total: monthly.reduce((a, b) => a + b, 0), setupTotal: p.setup.reduce((a, b) => a + b, 0), saasTotal: p.saas.reduce((a, b) => a + b, 0) };
       })
       .sort((a, b) => b.total - a.total);
     const setupBy = new Array(N).fill(0), saasBy = new Array(N).fill(0);
@@ -1576,7 +1576,14 @@ function CashFlowTable({ deals, currency, onOpenDeal }: { deals: Deal[]; currenc
             <tbody>
               {data.projects.map((p) => (
                 <tr key={p.id} onClick={() => onOpenDeal?.(p.id)} title="Abrir el trato">
-                  <td className="cf-table__proj"><b>{p.company}</b><span>{p.name}</span></td>
+                  <td className="cf-table__proj">
+                    <b>{p.company}</b>
+                    <span>{p.name}</span>
+                    <span className="cf-table__split">
+                      <span style={{ color: "#2563eb" }}>Setup {fmtMoney(p.setupTotal, currency)}</span>
+                      {p.saasTotal > 0 && <> · <span style={{ color: "#b45309" }}>SaaS {fmtMoney(p.saasTotal, currency)}</span></>}
+                    </span>
+                  </td>
                   {p.monthly.map((v, i) => <td key={i} className={v > 0 ? "" : "is-zero"} title={`Setup ${fmtMoney(p.setup[i], currency)} · SaaS ${fmtMoney(p.saas[i], currency)}`}>{cell(v)}</td>)}
                   <td className="cf-table__tot">{fmtMoney(p.total, currency)}</td>
                 </tr>
