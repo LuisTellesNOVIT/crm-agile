@@ -1529,7 +1529,8 @@ function CashFlowTable({ deals, currency, stages, onOpenDeal }: { deals: Deal[];
       return n;
     });
   const allStagesOn = !selStages || filterStages.every((s) => selStages.has(s.id));
-  const toggleAllStages = () => setSelStages(allStagesOn ? new Set() : null);
+  // "Todos" = reset: siempre selecciona todas las etapas (nunca vacía).
+  const resetStages = () => setSelStages(null);
   const data = useMemo(() => {
     const today = new Date();
     const now0 = today.getFullYear() * 12 + today.getMonth();
@@ -1616,7 +1617,8 @@ function CashFlowTable({ deals, currency, stages, onOpenDeal }: { deals: Deal[];
           <button
             type="button"
             className={`cf-chip cf-chip--all ${allStagesOn ? "is-on" : ""}`.trim()}
-            onClick={toggleAllStages}
+            onClick={resetStages}
+            title="Seleccionar todas las etapas"
           >
             Todos
           </button>
