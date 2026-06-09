@@ -4,6 +4,7 @@ import { Icon } from "../shell/Icon";
 import { Chip } from "../ui/Chip";
 import { Tabs } from "../ui/Tabs";
 import { Card } from "../ui/Card";
+import { Combobox } from "../ui/Combobox";
 import { useActiveWorkspace, useAppStore, useAllCompanies, useCurrentUser, useWorkspaceLoaderData } from "../../lib/store";
 import { fmtMoneyFull, daysFromToday } from "../../lib/format";
 import { templates } from "../../lib/mock/rich";
@@ -451,28 +452,22 @@ function DetailPane({
             )
           } />
           <FieldRow k="Cliente" v={
-            <select
-              className="deal-detail__select"
+            <Combobox
+              size="sm"
               value={deal.companyId ?? ""}
+              placeholder="Elegí un cliente…"
+              searchPlaceholder="Buscar cliente por nombre o RUC…"
               disabled={fetcher.state !== "idle"}
-              title="Cambiar cliente del trato (se guarda al instante)"
-              onChange={(e) => changeCompany(e.target.value)}
-            >
-              {(isAdmin || curCoWs === "novit") && (
-                <optgroup label="NOVIT">
-                  {novitCompanies.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </optgroup>
-              )}
-              {(isAdmin || curCoWs === "sharky") && (
-                <optgroup label="SHARKY">
-                  {sharkyCompanies.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </optgroup>
-              )}
-            </select>
+              onSelect={(id) => changeCompany(id)}
+              options={[
+                ...((isAdmin || curCoWs === "novit") ? novitCompanies : []).map((c) => ({
+                  value: c.id, label: c.name, sublabel: c.ruc ? `RUC ${c.ruc}` : undefined, group: "NOVIT",
+                })),
+                ...((isAdmin || curCoWs === "sharky") ? sharkyCompanies : []).map((c) => ({
+                  value: c.id, label: c.name, sublabel: c.ruc ? `RUC ${c.ruc}` : undefined, group: "SHARKY",
+                })),
+              ]}
+            />
           } />
           <FieldRow k="Creado" v={<span className="mono">{new Date(deal.createdAt).toLocaleDateString("es")}</span>} />
           <FieldRow k="Cierre estimado" v={
@@ -497,20 +492,20 @@ function DetailPane({
           <FieldRow k="Tags" v={<InlineTags dealId={deal.id} value={deal.tags} />} />
           <FieldRow k="Contacto" v={
             companyContacts.length > 0 ? (
-              <select
-                className="deal-detail__select"
+              <Combobox
+                size="sm"
                 value={deal.contactId ?? ""}
+                placeholder="— Sin contacto —"
+                searchPlaceholder="Buscar contacto…"
                 disabled={fetcher.state !== "idle"}
-                title="Contacto principal del trato (se guarda al instante)"
-                onChange={(e) => changeContact(e.target.value)}
-              >
-                <option value="">— Sin contacto —</option>
-                {companyContacts.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}{c.role ? ` · ${c.role}` : ""}
-                  </option>
-                ))}
-              </select>
+                onSelect={(id) => changeContact(id)}
+                options={[
+                  { value: "", label: "— Sin contacto —" },
+                  ...companyContacts.map((c) => ({
+                    value: c.id, label: c.name, sublabel: c.role ?? undefined, avatar: true,
+                  })),
+                ]}
+              />
             ) : (
               <span style={{ color: "var(--fg-4)" }}>
                 {deal.contactName ?? "— sin contactos —"}

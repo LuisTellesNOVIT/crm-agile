@@ -1,7 +1,9 @@
-import { Fragment, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useFetcher } from "react-router";
 import { Icon } from "../shell/Icon";
 import { Chip } from "../ui/Chip";
+import { Combobox, type ComboOption } from "../ui/Combobox";
+import { initialsOf, avatarBg } from "../../lib/avatar";
 import { useActiveWorkspace, useCurrentUser, useWorkspaceLoaderData, useAppStore } from "../../lib/store";
 import { TagsEditor } from "../ui/TagsEditor";
 
@@ -58,205 +60,7 @@ const INITIAL: FormState = {
 
 type ActionResult = { ok?: boolean; error?: string; dealId?: string; dealName?: string; company?: string; message?: string };
 
-// ── helpers de presentación ──────────────────────────────
-function initialsOf(name: string) {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (!parts.length) return "?";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
-function avatarBg(seed: string) {
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) % 360;
-  return `oklch(64% 0.14 ${h})`;
-}
 const USD0 = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
-
-// ── Combobox (buscable, teclado, "crear nuevo") ──────────
-type ComboOption = {
-  value: string;
-  label: string;
-  sublabel?: string;
-  group?: string;
-  avatar?: string; // iniciales
-};
-
-function Combobox({
-  value,
-  options,
-  onSelect,
-  placeholder,
-  searchPlaceholder,
-  newLabel,
-  newHint,
-  emptyText,
-  invalid,
-}: {
-  value: string;
-  options: ComboOption[];
-  onSelect: (v: string) => void;
-  placeholder: string;
-  searchPlaceholder: string;
-  newLabel: string;
-  newHint?: string;
-  emptyText?: string;
-  invalid?: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const [active, setActive] = useState(0);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const isNew = value === NEW;
-  const selected = options.find((o) => o.value === value) || null;
-
-  const q = query.trim().toLowerCase();
-  const filtered = q
-    ? options.filter((o) => (o.label + " " + (o.sublabel ?? "")).toLowerCase().includes(q))
-    : options;
-  // índice 0 = fila "crear nuevo"; el resto son filtered[i] → flat idx i+1
-  const flatLen = filtered.length + 1;
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [open]);
-
-  useEffect(() => {
-    if (open) {
-      setQuery("");
-      setActive(0);
-      const t = window.setTimeout(() => inputRef.current?.focus(), 10);
-      return () => window.clearTimeout(t);
-    }
-  }, [open]);
-
-  const chooseIdx = (idx: number) => {
-    if (idx <= 0) onSelect(NEW);
-    else onSelect(filtered[idx - 1].value);
-    setOpen(false);
-  };
-
-  const onKey = (e: React.KeyboardEvent) => {
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setActive((a) => Math.min(a + 1, flatLen - 1));
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setActive((a) => Math.max(a - 1, 0));
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      chooseIdx(active);
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      setOpen(false);
-    }
-  };
-
-  return (
-    <div className={`cbx ${invalid ? "is-invalid" : ""}`.trim()} ref={rootRef}>
-      <button
-        type="button"
-        className={`cbx__trigger ${isNew ? "is-new" : ""}`.trim()}
-        onClick={() => setOpen((o) => !o)}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-      >
-        {isNew ? (
-          <span className="cbx__triggerlabel cbx__new">
-            <span className="cbx__createicon"><Icon name="plus" size={12} /></span>
-            {newLabel}…
-          </span>
-        ) : selected ? (
-          <span className="cbx__triggerlabel">
-            {selected.avatar && (
-              <span className="cbx__avatar" style={{ background: avatarBg(selected.label) }}>
-                {selected.avatar}
-              </span>
-            )}
-            <span className="cbx__lbl">{selected.label}</span>
-            {selected.sublabel && <span className="cbx__sub">{selected.sublabel}</span>}
-          </span>
-        ) : (
-          <span className="cbx__placeholder">{placeholder}</span>
-        )}
-        <span className="cbx__chev"><Icon name="chevron-down" size={14} /></span>
-      </button>
-
-      {open && (
-        <div className="cbx__panel" role="listbox">
-          <div className="cbx__searchwrap">
-            <Icon name="search" size={13} />
-            <input
-              ref={inputRef}
-              className="cbx__search"
-              placeholder={searchPlaceholder}
-              value={query}
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setActive(0);
-              }}
-              onKeyDown={onKey}
-            />
-          </div>
-          <div className="cbx__list">
-            <button
-              type="button"
-              className={`cbx__opt cbx__createopt ${active === 0 ? "is-active" : ""}`.trim()}
-              onMouseEnter={() => setActive(0)}
-              onClick={() => chooseIdx(0)}
-            >
-              <span className="cbx__optmain">
-                <span className="cbx__createicon"><Icon name="plus" size={12} /></span>
-                <span className="cbx__lbl">
-                  {newLabel}
-                  {query ? `: “${query.trim()}”` : "…"}
-                </span>
-              </span>
-              {newHint && !query && <span className="cbx__opthint">{newHint}</span>}
-            </button>
-
-            {filtered.length === 0 && (
-              <div className="cbx__empty">{q ? `Nada coincide con “${query.trim()}”.` : emptyText ?? "Sin opciones."}</div>
-            )}
-
-            {filtered.map((opt, i) => {
-              const idx = i + 1;
-              const showHeader = opt.group && opt.group !== filtered[i - 1]?.group;
-              return (
-                <Fragment key={opt.value}>
-                  {showHeader && <div className="cbx__group">{opt.group}</div>}
-                  <button
-                    type="button"
-                    className={`cbx__opt ${active === idx ? "is-active" : ""} ${opt.value === value ? "is-selected" : ""}`.trim()}
-                    onMouseEnter={() => setActive(idx)}
-                    onClick={() => chooseIdx(idx)}
-                  >
-                    <span className="cbx__optmain">
-                      {opt.avatar && (
-                        <span className="cbx__avatar" style={{ background: avatarBg(opt.label) }}>
-                          {opt.avatar}
-                        </span>
-                      )}
-                      <span className="cbx__lbl">{opt.label}</span>
-                      {opt.sublabel && <span className="cbx__sub">{opt.sublabel}</span>}
-                    </span>
-                    {opt.value === value && <Icon name="check" size={14} />}
-                  </button>
-                </Fragment>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ── Etapa como pills ─────────────────────────────────────
 function StagePills({
@@ -349,9 +153,9 @@ export function NewLeadDrawer({ onClose }: { onClose: () => void }) {
   }));
   const contactOptions: ComboOption[] = isNewClient
     ? contactsByClient.flatMap((g) =>
-        g.items.map((c) => ({ value: c.id, label: c.name, sublabel: c.email || undefined, group: g.companyName, avatar: initialsOf(c.name) })),
+        g.items.map((c) => ({ value: c.id, label: c.name, sublabel: c.email || undefined, group: g.companyName, avatar: true })),
       )
-    : clientContacts.map((c) => ({ value: c.id, label: c.name, sublabel: c.email || undefined, avatar: initialsOf(c.name) }));
+    : clientContacts.map((c) => ({ value: c.id, label: c.name, sublabel: c.email || undefined, avatar: true }));
 
   const onClientChange = (value: string) => setForm((f) => ({ ...f, companyId: value, contactId: NEW }));
   const onContactChange = (value: string) => {
@@ -483,6 +287,7 @@ export function NewLeadDrawer({ onClose }: { onClose: () => void }) {
                   onSelect={onClientChange}
                   placeholder="Elegí un cliente…"
                   searchPlaceholder="Buscar por nombre o RUC…"
+                  newValue={NEW}
                   newLabel="Nuevo cliente"
                   newHint="No está en el maestro"
                   emptyText="Sin clientes todavía — creá el primero"
@@ -565,6 +370,7 @@ export function NewLeadDrawer({ onClose }: { onClose: () => void }) {
                   onSelect={onContactChange}
                   placeholder="Elegí un contacto…"
                   searchPlaceholder="Buscar por nombre o email…"
+                  newValue={NEW}
                   newLabel="Nuevo contacto"
                   newHint="Crear una persona nueva"
                   emptyText={isNewClient ? "Sin contactos en el maestro" : "Este cliente no tiene contactos aún"}
@@ -823,62 +629,6 @@ export function NewLeadDrawer({ onClose }: { onClose: () => void }) {
           .lead-input.is-invalid { border-color: var(--danger); box-shadow: 0 0 0 3px oklch(58% 0.22 25 / .10); }
           select.lead-input { cursor: pointer; }
 
-          /* Combobox */
-          .cbx { position: relative; }
-          .cbx__trigger {
-            width: 100%; display: flex; align-items: center; gap: 8px;
-            padding: 8px 10px; border: 1px solid var(--border); border-radius: 9px;
-            background: var(--bg); color: var(--fg); font: inherit; font-size: 13.5px;
-            cursor: pointer; text-align: left; transition: border-color .12s, box-shadow .12s;
-          }
-          .cbx__trigger:hover { border-color: var(--fg-4); }
-          .cbx[aria-expanded] .cbx__trigger { }
-          .cbx__trigger[aria-expanded="true"] { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(99,102,241,.12); }
-          .cbx.is-invalid .cbx__trigger { border-color: var(--danger); }
-          .cbx__triggerlabel { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
-          .cbx__triggerlabel.cbx__new { color: var(--accent); font-weight: 600; }
-          .cbx__lbl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-          .cbx__sub { color: var(--fg-4); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 1; }
-          .cbx__placeholder { color: var(--fg-4); flex: 1; }
-          .cbx__chev { color: var(--fg-4); display: inline-flex; margin-left: auto; }
-          .cbx__createicon {
-            width: 17px; height: 17px; border-radius: 5px; display: grid; place-items: center;
-            background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent);
-          }
-          .cbx__avatar {
-            width: 22px; height: 22px; border-radius: 50%; color: #fff; flex-shrink: 0;
-            display: grid; place-items: center; font-size: 9.5px; font-weight: 700; font-family: var(--font-mono);
-          }
-
-          .cbx__panel {
-            position: absolute; z-index: 60; top: calc(100% + 5px); left: 0; right: 0;
-            background: var(--bg); border: 1px solid var(--border); border-radius: 11px;
-            box-shadow: 0 14px 40px rgba(0,0,0,.18); overflow: hidden;
-            animation: cbxPop .12s ease;
-          }
-          @keyframes cbxPop { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
-          .cbx__searchwrap {
-            display: flex; align-items: center; gap: 7px; padding: 9px 11px;
-            border-bottom: 1px solid var(--border-2); color: var(--fg-4);
-          }
-          .cbx__search { flex: 1; border: none; outline: none; background: transparent; font: inherit; font-size: 13px; color: var(--fg); }
-          .cbx__list { max-height: 260px; overflow-y: auto; padding: 5px; display: flex; flex-direction: column; gap: 1px; }
-          .cbx__group {
-            font-size: 10px; text-transform: uppercase; letter-spacing: .07em; color: var(--fg-4);
-            font-family: var(--font-mono); padding: 8px 9px 3px; position: sticky; top: 0; background: var(--bg);
-          }
-          .cbx__opt {
-            display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
-            padding: 7px 9px; border: 0; border-radius: 8px; background: transparent; cursor: pointer;
-            font: inherit; font-size: 13px; color: var(--fg);
-          }
-          .cbx__opt.is-active { background: var(--bg-2); }
-          .cbx__opt.is-selected { color: var(--accent); }
-          .cbx__optmain { display: flex; align-items: center; gap: 9px; min-width: 0; flex: 1; }
-          .cbx__opt .cbx__sub { margin-left: 2px; }
-          .cbx__createopt { color: var(--accent); font-weight: 600; }
-          .cbx__opthint { margin-left: auto; font-size: 10.5px; color: var(--fg-4); font-weight: 400; }
-          .cbx__empty { padding: 14px 11px; text-align: center; color: var(--fg-4); font-size: 12px; }
 
           /* Tarjeta de selección (cliente/contacto existente) */
           .lead-selcard {
