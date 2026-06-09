@@ -1514,8 +1514,22 @@ function CashFlowCard({ deals, currency, onOpenDeal }: { deals: Deal[]; currency
    filas = proyectos estratégicos, columnas = 12 meses, + totales.
    ============================================================ */
 function CashFlowTable({ deals, currency, stages, onOpenDeal }: { deals: Deal[]; currency: Currency; stages: { id: string; label: string; color: string }[]; onOpenDeal?: (id: string) => void }) {
-  const stageColor = (id: string) => stages.find((s) => s.id === id)?.color ?? "var(--fg-4)";
   const stageLabel = (id: string) => stages.find((s) => s.id === id)?.label ?? id;
+  // ── Filtros: etapas del lead (multi-select) + estratégico ──
+  const filterStages = stages.filter((s) => s.id !== "lost");
+  // null = todas las etapas seleccionadas (default robusto aunque stages aún no cargue)
+  const [selStages, setSelStages] = useState<Set<string> | null>(null);
+  const [strategicOnly, setStrategicOnly] = useState(true);
+  const stageOn = (id: string) => !selStages || selStages.has(id);
+  const toggleStage = (id: string) =>
+    setSelStages((prev) => {
+      const base = prev ?? new Set(filterStages.map((s) => s.id));
+      const n = new Set(base);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+  const allStagesOn = !selStages || filterStages.every((s) => selStages.has(s.id));
+  const toggleAllStages = () => setSelStages(allStagesOn ? new Set() : null);
   const data = useMemo(() => {
     const today = new Date();
     const now0 = today.getFullYear() * 12 + today.getMonth();
@@ -1534,7 +1548,8 @@ function CashFlowTable({ deals, currency, stages, onOpenDeal }: { deals: Deal[];
       return p;
     };
     for (const d of deals) {
-      if (d.stage === "lost" || !d.strategic) continue;
+      if (selStages && !selStages.has(d.stage)) continue; // filtro por estado del lead
+      if (strategicOnly && !d.strategic) continue;  // filtro estratégico
       const start = d.projectStartAt ? new Date(d.projectStartAt) : null;
       const end = d.projectEndAt ? new Date(d.projectEndAt) : null;
       if (start && end && d.value > 0) {
@@ -1572,9 +1587,8 @@ function CashFlowTable({ deals, currency, stages, onOpenDeal }: { deals: Deal[];
       sumSaas: saasBy.reduce((a, b) => a + b, 0),
       grand: totalBy.reduce((a, b) => a + b, 0),
     };
-  }, [deals]);
+  }, [deals, selStages, strategicOnly]);
 
-  if (data.projects.length === 0) return null;
   const cell = (v: number) => (v > 0 ? fmtMoney(v, currency) : "·");
   // Heatmap tipográfico: las cifras grandes resaltan, las chicas se atenúan.
   const heat = (v: number) =>
@@ -1595,6 +1609,46 @@ function CashFlowTable({ deals, currency, stages, onOpenDeal }: { deals: Deal[];
           <span className="cf-legend__item"><i className="cf-sw cf-sw--setup" /> Setup</span>
           <span className="cf-legend__item"><i className="cf-sw cf-sw--saas" /> SaaS</span>
         </div>
+
+        {/* ── Filtros: estado del lead (multi) + estratégico ── */}
+        <div className="cf-filters">
+          <span className="cf-filters__lbl">Estado</span>
+          <button
+            type="button"
+            className={`cf-chip cf-chip--all ${allStagesOn ? "is-on" : ""}`.trim()}
+            onClick={toggleAllStages}
+          >
+            Todos
+          </button>
+          {filterStages.map((s) => {
+            const on = stageOn(s.id);
+            return (
+              <button
+                key={s.id}
+                type="button"
+                className={`cf-chip ${on ? "is-on" : ""}`.trim()}
+                style={on ? { borderColor: s.color, background: `color-mix(in srgb, ${s.color} 13%, transparent)` } : undefined}
+                onClick={() => toggleStage(s.id)}
+              >
+                <i className="cf-chip__dot" style={{ background: s.color }} />
+                {s.label}
+              </button>
+            );
+          })}
+          <span className="cf-filters__sep" />
+          <button
+            type="button"
+            className={`cf-chip cf-chip--strat ${strategicOnly ? "is-on" : ""}`.trim()}
+            title={strategicOnly ? "Mostrando solo estratégicos — clic para incluir todos" : "Mostrando todos — clic para solo estratégicos"}
+            onClick={() => setStrategicOnly((v) => !v)}
+          >
+            ★ Solo estratégicos
+          </button>
+        </div>
+
+        {data.projects.length === 0 ? (
+          <div className="cf-empty">Ningún proyecto coincide con los filtros seleccionados.</div>
+        ) : (
         <div className="cf-table-wrap">
           <table className="cf-table">
             <thead>
@@ -1619,11 +1673,8 @@ function CashFlowTable({ deals, currency, stages, onOpenDeal }: { deals: Deal[];
                   title={`${p.company} · ${p.name} — ${stageLabel(p.stage)} · clic para abrir`}
                   className={p.stage === "won" ? "cf-table__row--won" : p.stage === "signing" ? "cf-table__row--firma" : ""}
                 >
-                  <td className="cf-table__proj">
-                    <span className="cf-proj">
-                      <i className="cf-dot" style={{ background: stageColor(p.stage) }} />
-                      <span className="cf-proj__txt"><b>{p.company}</b> <span className="cf-pn">· {p.name}</span></span>
-                    </span>
+                  <td className="cf-table__proj" title={`${p.company} · ${p.name}`}>
+                    <b>{p.company}</b> <span className="cf-pn">· {p.name}</span>
                   </td>
                   {p.monthly.map((v, i) => <td key={i} className={heat(v)} title={`Setup ${fmtMoney(p.setup[i], currency)} · SaaS ${fmtMoney(p.saas[i], currency)}`}>{cell(v)}</td>)}
                   <td className="cf-table__tot">{fmtMoney(p.total, currency)}</td>
@@ -1649,6 +1700,7 @@ function CashFlowTable({ deals, currency, stages, onOpenDeal }: { deals: Deal[];
             </tfoot>
           </table>
         </div>
+        )}
       </div>
     </div>
   );

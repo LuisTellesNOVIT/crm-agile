@@ -6233,6 +6233,24 @@ textarea.emp__input { resize: vertical; }
 .cf-sw--setup { background: #2563eb; }
 .cf-sw--saas { background: #f59e0b; }
 
+/* Filtros del flujo de caja: estado del lead (multi) + estratégico */
+.cf-filters { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; padding: 0 2px 12px; }
+.cf-filters__lbl { font-size: 10px; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: .07em; color: var(--fg-4); margin-right: 2px; }
+.cf-filters__sep { width: 1px; height: 18px; background: var(--border); margin: 0 4px; }
+.cf-chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px;
+  border: 1px solid var(--border); border-radius: 999px; background: var(--bg);
+  font: inherit; font-size: 11.5px; font-weight: 500; color: var(--fg-3); cursor: pointer;
+  transition: border-color .12s, background .12s, color .12s, opacity .12s;
+}
+.cf-chip:hover { border-color: var(--fg-4); color: var(--fg); }
+.cf-chip.is-on { color: var(--fg); font-weight: 600; }
+.cf-chip:not(.is-on) { opacity: .62; }
+.cf-chip__dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.cf-chip--all.is-on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.cf-chip--strat.is-on { border-color: #f59e0b; background: color-mix(in srgb, #f59e0b 13%, transparent); color: #b45309; }
+.cf-empty { padding: 40px 16px; text-align: center; color: var(--fg-4); font-size: 13px; border: 1px dashed var(--border); border-radius: 10px; }
+
 /* Super-cabecera por año (2026 / 2027 …) — no se fija para no solapar con la
    fila de meses, que sí es sticky. */
 .cf-table thead tr.cf-table__yr-row th { position: static; top: auto; background: var(--bg-2); }
