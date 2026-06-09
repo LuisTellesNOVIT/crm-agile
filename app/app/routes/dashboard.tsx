@@ -1485,9 +1485,8 @@ function CashFlowCard({ deals, currency, onOpenDeal }: { deals: Deal[]; currency
                 </div>
                 {detail.rows.map((r) => (
                   <div key={r.id} className="cf-drawer__row" onClick={() => onOpenDeal?.(r.id)}>
-                    <span className="cf-drawer__proj">
-                      <b>{r.company}</b>
-                      <small>{r.name}</small>
+                    <span className="cf-drawer__proj" title={`${r.company} · ${r.name}`}>
+                      <b>{r.company}</b> · <span className="cf-pn">{r.name}</span>
                     </span>
                     <span className={`cf-drawer__setup ${r.setup > 0 ? "" : "is-zero"}`}>{r.setup > 0 ? fmtMoney(r.setup, currency) : "—"}</span>
                     <span className={`cf-drawer__saas ${r.saas > 0 ? "" : "is-zero"}`}>{r.saas > 0 ? fmtMoney(r.saas, currency) : "—"}</span>
@@ -1588,7 +1587,7 @@ function CashFlowTable({ deals, currency, onOpenDeal }: { deals: Deal[]; currenc
             <tbody>
               {data.projects.map((p) => (
                 <tr key={p.id} onClick={() => onOpenDeal?.(p.id)} title="Abrir el trato">
-                  <td className="cf-table__proj"><b>{p.company}</b><span>{p.name}</span></td>
+                  <td className="cf-table__proj" title={`${p.company} · ${p.name}`}><b>{p.company}</b> · <span className="cf-pn">{p.name}</span></td>
                   {p.monthly.map((v, i) => <td key={i} className={v > 0 ? "" : "is-zero"} title={`Setup ${fmtMoney(p.setup[i], currency)} · SaaS ${fmtMoney(p.saas[i], currency)}`}>{cell(v)}</td>)}
                   <td className="cf-table__tot">{fmtMoney(p.total, currency)}</td>
                 </tr>

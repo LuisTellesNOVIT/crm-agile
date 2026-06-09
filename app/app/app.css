@@ -6124,7 +6124,8 @@ textarea.emp__input { resize: vertical; }
 .cashflow__accum-bar:hover .cashflow__accum-col { filter: brightness(1.06); }
 
 /* ───── Flujo de caja detallado (tabla tipo Excel) ───── */
-.cf-table-wrap { overflow: auto; max-height: 460px; border: 1px solid var(--border-2); border-radius: 8px; }
+/* Sin alto fijo: la tabla crece con la cantidad de proyectos (solo scroll horizontal). */
+.cf-table-wrap { overflow-x: auto; overflow-y: visible; border: 1px solid var(--border-2); border-radius: 8px; }
 .cf-table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 12px; font-family: var(--font-mono); white-space: nowrap; }
 .cf-table th, .cf-table td { border-right: 1px solid var(--border-2); border-bottom: 1px solid var(--border-2); padding: 6px 11px; text-align: right; }
 .cf-table th:last-child, .cf-table td:last-child { border-right: 0; }
@@ -6132,14 +6133,16 @@ textarea.emp__input { resize: vertical; }
 .cf-table thead th small { color: var(--fg-4); font-weight: 400; margin-left: 2px; }
 .cf-table__proj { text-align: left !important; position: sticky; left: 0; z-index: 2; background: var(--bg); min-width: 190px; max-width: 230px; }
 .cf-table thead .cf-table__proj { z-index: 4; background: var(--bg-2); }
-.cf-table__proj b { display: block; font-family: var(--font-sans); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; }
-.cf-table__proj span { display: block; font-family: var(--font-sans); font-size: 10.5px; color: var(--fg-3); overflow: hidden; text-overflow: ellipsis; }
+.cf-table__proj { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 300px; }
+.cf-table__proj b { display: inline; font-family: var(--font-sans); font-size: 12.5px; }
+.cf-table__proj span.cf-pn { display: inline; font-family: var(--font-sans); font-size: 12px; color: var(--fg-3); }
 .cf-table tbody tr { cursor: pointer; }
 .cf-table tbody tr:hover td { background: var(--bg-2); }
 .cf-table tbody tr:hover .cf-table__proj { background: var(--bg-2); }
 .cf-table td.is-zero { color: var(--fg-4); }
 .cf-table__tot { font-weight: 600; background: var(--bg-2); }
-.cf-table tfoot td { position: sticky; bottom: 0; z-index: 2; background: var(--bg-2); font-weight: 600; }
+.cf-table tfoot td { background: var(--bg-2); font-weight: 600; }
+.cf-table tfoot .cf-table__proj { position: sticky; left: 0; z-index: 2; }
 .cf-table tfoot .cf-table__proj { z-index: 3; }
 .cf-table tfoot .cf-table__sub td { color: var(--fg-2); font-weight: 500; }
 .cf-table tfoot .cf-table__total td { background: var(--bg-3); color: var(--fg); }
@@ -6177,9 +6180,9 @@ textarea.emp__input { resize: vertical; }
 .cf-drawer__row--head > span:first-child { color: var(--fg-3); }
 .cf-drawer__row--total, .cf-drawer__row--total:hover { cursor: default; background: var(--bg-3); }
 .cf-drawer__row--total b { font-size: 12.5px; }
-.cf-drawer__proj { min-width: 0; display: flex; flex-direction: column; }
-.cf-drawer__proj b { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cf-drawer__proj small { font-size: 11px; color: var(--fg-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cf-drawer__proj { min-width: 0; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
+.cf-drawer__proj b { font-weight: 700; }
+.cf-drawer__proj .cf-pn { color: var(--fg-3); }
 .cf-drawer__setup, .cf-drawer__saas { text-align: right; font-family: var(--font-mono); font-size: 12px; font-weight: 600; }
 .cf-drawer__setup { color: #2563eb; }
 .cf-drawer__saas { color: #b45309; }
