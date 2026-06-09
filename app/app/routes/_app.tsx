@@ -19,8 +19,8 @@ import { ownersByInitials, toClientDeal } from "../lib/serialize";
 import { requireUser } from "../lib/session.server";
 
 const EMPTY_DEALS: WorkspaceLoaderData = {
-  novit: { deals: [], owners: {}, companies: [], stages: [] },
-  sharky: { deals: [], owners: {}, companies: [], stages: [] },
+  novit: { deals: [], owners: {}, companies: [], contacts: [], stages: [], sequences: [] },
+  sharky: { deals: [], owners: {}, companies: [], contacts: [], stages: [], sequences: [] },
 };
 
 export type AppLoaderData = WorkspaceLoaderData & {
@@ -65,8 +65,8 @@ export async function loader({ request }: { request: Request }): Promise<AppLoad
         where: { slug: "novit" },
         include: {
           users: true,
-          companies: { orderBy: { name: "asc" } },
-          deals: { include: { company: true, owner: true } },
+          companies: { orderBy: { name: "asc" }, include: { contacts: { select: { id: true, name: true, email: true, phone: true, role: true } } } },
+          deals: { include: { company: true, owner: true, contact: { select: { id: true, name: true } } } },
           pipelineStages: { orderBy: { position: "asc" } },
         },
       }),
@@ -74,8 +74,8 @@ export async function loader({ request }: { request: Request }): Promise<AppLoad
         where: { slug: "sharky" },
         include: {
           users: true,
-          companies: { orderBy: { name: "asc" } },
-          deals: { include: { company: true, owner: true } },
+          companies: { orderBy: { name: "asc" }, include: { contacts: { select: { id: true, name: true, email: true, phone: true, role: true } } } },
+          deals: { include: { company: true, owner: true, contact: { select: { id: true, name: true } } } },
           pipelineStages: { orderBy: { position: "asc" } },
         },
       }),
@@ -139,11 +139,27 @@ export async function loader({ request }: { request: Request }): Promise<AppLoad
           active: s.active,
         }));
 
+    // Maestro de contactos por workspace (aplanado desde las empresas/clientes)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mapContacts = (companies: any[]) =>
+      (companies ?? []).flatMap((c) =>
+        (c.contacts ?? []).map((ct: { id: string; name: string; email: string; phone: string | null; role: string | null }) => ({
+          id: ct.id,
+          name: ct.name,
+          email: ct.email,
+          phone: ct.phone ?? null,
+          role: ct.role ?? null,
+          companyId: c.id,
+          companyName: c.name,
+        })),
+      );
+
     return {
       novit: {
         deals: (novitWs?.deals ?? []).map(toClientDeal),
         owners: ownersByInitials(novitWs?.users ?? []),
         companies: mapCompanies(novitWs?.companies ?? [], "novit"),
+        contacts: mapContacts(novitWs?.companies ?? []),
         stages: mapStages(novitWs?.pipelineStages ?? []),
         sequences: mapSequences(novitWs?.id),
       },
@@ -151,6 +167,7 @@ export async function loader({ request }: { request: Request }): Promise<AppLoad
         deals: (sharkyWs?.deals ?? []).map(toClientDeal),
         owners: ownersByInitials(sharkyWs?.users ?? []),
         companies: mapCompanies(sharkyWs?.companies ?? [], "sharky"),
+        contacts: mapContacts(sharkyWs?.companies ?? []),
         stages: mapStages(sharkyWs?.pipelineStages ?? []),
         sequences: mapSequences(sharkyWs?.id),
       },

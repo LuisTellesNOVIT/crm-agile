@@ -150,6 +150,7 @@ model Contact {
   phone     String?
   companyId String
   company   Company @relation(fields: [companyId], references: [id])
+  deals     Deal[]
 
   @@index([companyId])
 }
@@ -180,6 +181,9 @@ model Deal {
 
   companyId String
   company   Company @relation(fields: [companyId], references: [id])
+
+  contactId String?  // contacto principal del lead (maestro de contactos)
+  contact   Contact? @relation(fields: [contactId], references: [id])
 
   ownerId String
   owner   User @relation(fields: [ownerId], references: [id])

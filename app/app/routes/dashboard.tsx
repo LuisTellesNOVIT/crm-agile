@@ -1227,7 +1227,7 @@ function AIRecsCard({
     body: (
       <>
         Tratos con <b>3+ stakeholders activos</b> cierran 2.4× más rápido.{" "}
-        <b>{open.filter((d) => d.contacts < 2).length} tratos</b> tienen 1 solo contacto — pedí intros esta semana.
+        <b>{open.filter((d) => d.contacts === 0).length} tratos</b> no tienen contacto asignado — asigná uno esta semana.
       </>
     ),
     cta: "Hablar con la IA",

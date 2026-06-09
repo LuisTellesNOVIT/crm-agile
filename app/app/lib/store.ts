@@ -160,6 +160,7 @@ type WsData = {
   deals: Deal[];
   owners: OwnersByKey;
   companies: import("./types").CompanyLite[];
+  contacts: import("./types").ContactLite[];
   stages: import("./types").Stage[];
   sequences: import("./types").SeqOption[];
 };
@@ -169,8 +170,8 @@ export type WorkspaceLoaderData = {
 };
 
 const EMPTY_DATA: WorkspaceLoaderData = {
-  novit: { deals: [], owners: {}, companies: [], stages: [], sequences: [] },
-  sharky: { deals: [], owners: {}, companies: [], stages: [], sequences: [] },
+  novit: { deals: [], owners: {}, companies: [], contacts: [], stages: [], sequences: [] },
+  sharky: { deals: [], owners: {}, companies: [], contacts: [], stages: [], sequences: [] },
 };
 
 export type CurrentUserData = {
@@ -250,6 +251,7 @@ export function useActiveWorkspace(): Workspace {
         ],
         owners: { ...data.novit.owners, ...data.sharky.owners },
         companies: [...data.novit.companies, ...data.sharky.companies],
+        contacts: [...data.novit.contacts, ...data.sharky.contacts],
         stages: novitStages,
         sequences: [...data.novit.sequences, ...data.sharky.sequences],
         today: todayDate,
@@ -260,6 +262,7 @@ export function useActiveWorkspace(): Workspace {
         deals: data[workspace].deals,
         owners: data[workspace].owners,
         companies: data[workspace].companies,
+        contacts: data[workspace].contacts,
         stages: workspace === "sharky" ? sharkyStages : novitStages,
         sequences: data[workspace].sequences,
         today: todayDate,

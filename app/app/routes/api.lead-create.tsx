@@ -46,13 +46,20 @@ export async function action({ request }: ActionFunctionArgs) {
   const tags = parseTags(String(fd.get("tags") ?? ""));
   const sequenceId = String(fd.get("sequenceId") ?? "").trim();
   const strategic = ["true", "1", "on", "si", "sí"].includes(String(fd.get("strategic") ?? "").toLowerCase());
+  // Maestros: cliente y contacto existentes (si se eligen, no se crean de nuevo)
+  const companyId = String(fd.get("companyId") ?? "").trim();
+  const contactId = String(fd.get("contactId") ?? "").trim();
 
   // ── Validaciones ────────────────────────────────────────
   const errors: string[] = [];
-  if (!firstName) errors.push("Nombre requerido");
-  if (!email) errors.push("Email requerido");
-  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.push("Email inválido");
-  if (!companyName) errors.push("Nombre de empresa requerido");
+  // Si se elige un contacto existente, no exigimos nombre/email nuevos.
+  if (!contactId) {
+    if (!firstName) errors.push("Nombre del contacto requerido");
+    if (!email) errors.push("Email del contacto requerido");
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.push("Email inválido");
+  }
+  // Cliente: por id existente o por nombre nuevo.
+  if (!companyId && !companyName) errors.push("Elegí un cliente o escribí el nombre");
   if (ruc && !/^\d{11}$/.test(ruc)) errors.push("RUC debe tener 11 dígitos");
   const estimatedValue = parseFloat(estimatedValueRaw);
   if (!Number.isFinite(estimatedValue) || estimatedValue < 0) errors.push("Valor estimado inválido");
@@ -95,10 +102,18 @@ export async function action({ request }: ActionFunctionArgs) {
     return Response.json({ error: `Stage inválido: ${resolvedStageKey}` }, { status: 400 });
   }
 
-  // ── Company: por RUC si viene, sino por nombre ──────
+  // ── Cliente: id existente (maestro) → RUC → nombre → crear ──
   let company: { id: string; name: string } | null = null;
 
-  if (ruc) {
+  if (companyId) {
+    const existing = await prisma.company.findFirst({
+      where: { id: companyId, workspaceId: ws.id },
+      select: { id: true, name: true },
+    });
+    if (existing) company = existing;
+  }
+
+  if (!company && ruc) {
     const existingByRuc = await prisma.company.findFirst({
       where: { workspaceId: ws.id, ruc },
       select: { id: true, name: true },
@@ -131,16 +146,26 @@ export async function action({ request }: ActionFunctionArgs) {
     });
   }
 
-  // ── Contact ──────────────────────────────────────────
-  const contactName = `${firstName} ${lastName}`.trim();
-  await prisma.contact.create({
-    data: {
-      name: contactName,
-      email,
-      phone: phone || null,
-      companyId: company.id,
-    },
-  });
+  // ── Contacto: maestro (id existente → dedup por email → crear) ──
+  let contact: { id: string; name: string } | null = null;
+  if (contactId) {
+    const existing = await prisma.contact.findFirst({ where: { id: contactId }, select: { id: true, name: true } });
+    if (existing) contact = existing;
+  }
+  if (!contact && email) {
+    const existingByEmail = await prisma.contact.findFirst({
+      where: { companyId: company.id, email },
+      select: { id: true, name: true },
+    });
+    if (existingByEmail) contact = existingByEmail;
+  }
+  if (!contact && (firstName || email)) {
+    const newName = `${firstName} ${lastName}`.trim() || email;
+    contact = await prisma.contact.create({
+      data: { name: newName, email: email || "", phone: phone || null, companyId: company.id },
+      select: { id: true, name: true },
+    });
+  }
 
   // ── publicId secuencial (NOVIT-NNNN / SHARKY-NNNN) ──
   const prefix = ws.slug.toUpperCase();
@@ -188,6 +213,7 @@ export async function action({ request }: ActionFunctionArgs) {
       strategic,
       workspaceId: ws.id,
       companyId: company.id,
+      contactId: contact?.id ?? null,
       ownerId: me.id,
     },
     select: { id: true, publicId: true, name: true },

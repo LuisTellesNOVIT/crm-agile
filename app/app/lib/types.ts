@@ -85,6 +85,8 @@ export type Deal = {
   source?: string | null;
   sequence?: string | null; // Sequence.id asignada para el seguimiento (o null)
   strategic?: boolean; // lead/proyecto estratégico (Sí/No)
+  contactId?: string | null; // contacto principal del lead
+  contactName?: string | null;
   tags: string[];
   _ws?: WorkspaceId;
 };
@@ -97,11 +99,23 @@ export type SeqOption = {
   active: boolean;
 };
 
+/** Contacto del maestro (para seleccionar en el lead). */
+export type ContactLite = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  role: string | null;
+  companyId: string;
+  companyName: string;
+};
+
 export type Workspace = {
   id: ActiveWorkspaceId;
   deals: Deal[];
   owners: OwnersByKey;
-  companies: CompanyLite[]; // lista de empresas del workspace (para pickers)
+  companies: CompanyLite[]; // lista de clientes (empresas) del workspace (para pickers)
+  contacts: ContactLite[]; // maestro de contactos del workspace
   stages: Stage[];
   sequences: SeqOption[]; // secuencias disponibles para asignar al lead
   today: Date;

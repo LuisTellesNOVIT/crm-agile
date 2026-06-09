@@ -4,7 +4,7 @@ import { Icon } from "../shell/Icon";
 import { Chip } from "../ui/Chip";
 import { Tabs } from "../ui/Tabs";
 import { Card } from "../ui/Card";
-import { useActiveWorkspace, useAppStore, useAllCompanies, useCurrentUser } from "../../lib/store";
+import { useActiveWorkspace, useAppStore, useAllCompanies, useCurrentUser, useWorkspaceLoaderData } from "../../lib/store";
 import { fmtMoneyFull, daysFromToday } from "../../lib/format";
 import { templates } from "../../lib/mock/rich";
 import { tagColor } from "../../lib/tags";
@@ -251,6 +251,21 @@ function DetailPane({
     if (targetWs !== curCoWs) payload.moveToWorkspace = targetWs; // mueve el trato + reasigna owner
     fetcher.submit(payload, { method: "POST", action: "/api/deal-update" });
   };
+
+  // ── Contacto principal editable inline (maestro del cliente) ──
+  const loaderData = useWorkspaceLoaderData();
+  const companyContacts = useMemo(() => {
+    const all = [...loaderData.novit.contacts, ...loaderData.sharky.contacts];
+    return all
+      .filter((c) => c.companyId === deal.companyId)
+      .sort((a, b) => a.name.localeCompare(b.name, "es"));
+  }, [loaderData, deal.companyId]);
+  const changeContact = (id: string) => {
+    fetcher.submit(
+      { id: deal.id, contactId: id },
+      { method: "POST", action: "/api/deal-update" },
+    );
+  };
   // Cambiar el GRUPO inline = mover el trato + su empresa al otro workspace.
   const setWorkspace = useAppStore((s) => s.setWorkspace);
   const groupRevalidator = useRevalidator();
@@ -435,12 +450,12 @@ function DetailPane({
               </span>
             )
           } />
-          <FieldRow k="Empresa" v={
+          <FieldRow k="Cliente" v={
             <select
               className="deal-detail__select"
               value={deal.companyId ?? ""}
               disabled={fetcher.state !== "idle"}
-              title="Cambiar empresa del trato (se guarda al instante)"
+              title="Cambiar cliente del trato (se guarda al instante)"
               onChange={(e) => changeCompany(e.target.value)}
             >
               {(isAdmin || curCoWs === "novit") && (
@@ -480,7 +495,28 @@ function DetailPane({
             </span>
           } />
           <FieldRow k="Tags" v={<InlineTags dealId={deal.id} value={deal.tags} />} />
-          <FieldRow k="Contactos" v={<span className="mono">{deal.contacts}</span>} />
+          <FieldRow k="Contacto" v={
+            companyContacts.length > 0 ? (
+              <select
+                className="deal-detail__select"
+                value={deal.contactId ?? ""}
+                disabled={fetcher.state !== "idle"}
+                title="Contacto principal del trato (se guarda al instante)"
+                onChange={(e) => changeContact(e.target.value)}
+              >
+                <option value="">— Sin contacto —</option>
+                {companyContacts.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}{c.role ? ` · ${c.role}` : ""}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span style={{ color: "var(--fg-4)" }}>
+                {deal.contactName ?? "— sin contactos —"}
+              </span>
+            )
+          } />
         </Card.Body>
       </Card>
 
@@ -1162,7 +1198,7 @@ function DealEditModal({
               </label>
             </div>
             <label className="deal-edit-modal__field">
-              <span>Empresa <small>(elegí de cualquier grupo · el grupo del trato se ajusta solo)</small></span>
+              <span>Cliente <small>(elegí de cualquier grupo · el grupo del trato se ajusta solo)</small></span>
               <select value={companyId} onChange={(e) => onCompanyChange(e.target.value)}>
                 {(isAdmin || initialGroup === "novit") && (
                   <optgroup label="NOVIT">
@@ -1182,14 +1218,14 @@ function DealEditModal({
             </label>
             {group !== initialGroup && (
               <div className="deal-edit-modal__hint-move">
-                ⚠ Al guardar, el trato{selectedCompany && (selectedCompany._ws ?? "novit") !== group ? <> y la empresa <b>{selectedCompany.name}</b></> : ""} se {selectedCompany && (selectedCompany._ws ?? "novit") !== group ? "moverán" : "moverá"} al grupo <b>{group.toUpperCase()}</b>. El <b>owner</b> se reasignará a un usuario de {group.toUpperCase()}.
+                ⚠ Al guardar, el trato{selectedCompany && (selectedCompany._ws ?? "novit") !== group ? <> y el cliente <b>{selectedCompany.name}</b></> : ""} se {selectedCompany && (selectedCompany._ws ?? "novit") !== group ? "moverán" : "moverá"} al grupo <b>{group.toUpperCase()}</b>. El <b>owner</b> se reasignará a un usuario de {group.toUpperCase()}.
               </div>
             )}
           </div>
 
-          {/* ─── Empresa (SUNAT) — solo RUC, razón social e industria ─── */}
+          {/* ─── Cliente (SUNAT) — solo RUC, razón social e industria ─── */}
           <div className="deal-edit-modal__section">
-            <h3>Empresa · datos SUNAT</h3>
+            <h3>Cliente · datos SUNAT</h3>
             <div className="deal-edit-modal__row">
               <label className="deal-edit-modal__field" style={{ flex: 1 }}>
                 <span>RUC</span>

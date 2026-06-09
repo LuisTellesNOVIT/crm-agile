@@ -245,6 +245,40 @@ export async function action({ request }: ActionFunctionArgs) {
     }
   }
 
+  // ─── contactId (contacto principal del lead — maestro) ─────
+  // "" → quita el contacto; un id → lo asigna (validando que sea del cliente).
+  const contactIdRaw = form.get("contactId");
+  if (contactIdRaw != null) {
+    const cid = String(contactIdRaw).trim();
+    if (!cid) {
+      data.contactId = null;
+    } else {
+      // El contacto debe pertenecer al cliente (company) del deal — el que se
+      // está seteando en esta misma request, o el actual si no cambió.
+      const effectiveCompanyId =
+        (typeof data.companyId === "string" ? data.companyId : null) ?? existing.companyId;
+      const ct = await prisma.contact.findUnique({
+        where: { id: cid },
+        select: { companyId: true },
+      });
+      if (!ct || ct.companyId !== effectiveCompanyId) {
+        errors.push("El contacto no pertenece al cliente del trato");
+      } else {
+        data.contactId = cid;
+      }
+    }
+  }
+
+  // Si cambió el cliente y no vino un contacto explícito, limpiamos el
+  // contacto previo (pertenecía al cliente anterior → quedaría inconsistente).
+  if (
+    typeof data.companyId === "string" &&
+    data.companyId !== existing.companyId &&
+    data.contactId === undefined
+  ) {
+    data.contactId = null;
+  }
+
   // ─── estimatedCloseAt ──────────────────────────────────
   const closeAt = form.get("estimatedCloseAt");
   if (closeAt != null && String(closeAt).trim()) {

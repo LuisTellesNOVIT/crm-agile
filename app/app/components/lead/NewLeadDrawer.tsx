@@ -16,14 +16,21 @@ import { TagsEditor } from "../ui/TagsEditor";
  * - Al crear: refresca loaders → aparece de inmediato en Pipeline / Cliente 360.
  */
 
+const NEW = "__new__"; // valor centinela = "crear nuevo" en los selectores de maestro
+
 type FormState = {
+  // Cliente (maestro): companyId real | NEW
+  companyId: string;
+  companyName: string;
+  ruc: string;
+  industry: string;
+  // Contacto (maestro): contactId real | NEW
+  contactId: string;
   firstName: string;
   lastName: string;
   email: string;
   phoneLocal: string; // sólo el número local (sin +51)
-  companyName: string;
-  ruc: string;
-  industry: string;
+  // Oportunidad
   source: string;
   estimatedValue: string;
   dealName: string;
@@ -33,13 +40,15 @@ type FormState = {
 };
 
 const INITIAL: FormState = {
+  companyId: NEW,
+  companyName: "",
+  ruc: "",
+  industry: "",
+  contactId: NEW,
   firstName: "",
   lastName: "",
   email: "",
   phoneLocal: "",
-  companyName: "",
-  ruc: "",
-  industry: "",
   source: "",
   estimatedValue: "",
   dealName: "",
@@ -74,7 +83,46 @@ export function NewLeadDrawer({ onClose }: { onClose: () => void }) {
 
   // Secuencias del grupo destino (no del activo, por si está en "all")
   const loaderData = useWorkspaceLoaderData();
-  const seqOptions = loaderData[targetWorkspace as "novit" | "sharky"]?.sequences ?? [];
+  const wsData = loaderData[targetWorkspace as "novit" | "sharky"];
+  const seqOptions = wsData?.sequences ?? [];
+
+  // ── Maestros del grupo destino ──────────────────────────
+  const clients = [...(wsData?.companies ?? [])].sort((a, b) =>
+    a.name.localeCompare(b.name, "es"),
+  );
+  const allContacts = wsData?.contacts ?? [];
+
+  const isNewClient = form.companyId === NEW;
+  const isNewContact = form.contactId === NEW;
+  // Contactos del cliente elegido (sólo si es un cliente existente del maestro)
+  const clientContacts = isNewClient
+    ? []
+    : allContacts
+        .filter((c) => c.companyId === form.companyId)
+        .sort((a, b) => a.name.localeCompare(b.name, "es"));
+
+  // Al cambiar de cliente, reseteamos el contacto (sus contactos cambian).
+  const onClientChange = (value: string) => {
+    setForm((f) => ({ ...f, companyId: value, contactId: NEW }));
+  };
+  // Al elegir un contacto existente, prellenamos sus datos (sólo display).
+  const onContactChange = (value: string) => {
+    if (value === NEW) {
+      setForm((f) => ({ ...f, contactId: NEW }));
+      return;
+    }
+    const c = allContacts.find((x) => x.id === value);
+    setForm((f) => ({
+      ...f,
+      contactId: value,
+      firstName: c?.name ?? f.firstName,
+      lastName: "",
+      email: c?.email ?? f.email,
+      phoneLocal:
+        (c?.phone ?? "").replace(/^\+?51/, "").replace(/\D/g, "").slice(0, 9) ||
+        f.phoneLocal,
+    }));
+  };
 
   // Cerrar drawer 1.5s después del éxito (para que vea el mensaje)
   useEffect(() => {
@@ -97,13 +145,17 @@ export function NewLeadDrawer({ onClose }: { onClose: () => void }) {
     fetcher.submit(
       {
         workspaceSlug: targetWorkspace,
-        firstName: form.firstName,
-        lastName: form.lastName,
-        email: form.email,
-        phone: phoneFull,
-        companyName: form.companyName,
-        ruc: form.ruc,
-        industry: form.industry,
+        // Cliente: id del maestro si es existente, sino nombre/ruc nuevos
+        companyId: isNewClient ? "" : form.companyId,
+        companyName: isNewClient ? form.companyName : "",
+        ruc: isNewClient ? form.ruc : "",
+        industry: isNewClient ? form.industry : "",
+        // Contacto: id del maestro si es existente, sino datos nuevos
+        contactId: isNewContact ? "" : form.contactId,
+        firstName: isNewContact ? form.firstName : "",
+        lastName: isNewContact ? form.lastName : "",
+        email: isNewContact ? form.email : "",
+        phone: isNewContact ? phoneFull : "",
         source: form.source,
         estimatedValue: form.estimatedValue || "0",
         stage: form.stage || defaultStage,
@@ -150,97 +202,155 @@ export function NewLeadDrawer({ onClose }: { onClose: () => void }) {
           /* ─── Form ─── */
           <form onSubmit={onSubmit} className="lead-form">
             <div className="lead-form__section">
-              <h3>Contacto</h3>
-              <div className="lead-form__row">
-                <label className="lead-form__field" style={{ flex: 1 }}>
-                  <span>Nombre *</span>
-                  <input
-                    type="text"
-                    required
-                    autoFocus
-                    value={form.firstName}
-                    onChange={(e) => update({ firstName: e.target.value })}
-                    placeholder="Luis"
-                  />
-                </label>
-                <label className="lead-form__field" style={{ flex: 1 }}>
-                  <span>Apellido</span>
-                  <input
-                    type="text"
-                    value={form.lastName}
-                    onChange={(e) => update({ lastName: e.target.value })}
-                    placeholder="Telles Atto"
-                  />
-                </label>
-              </div>
-
+              <h3>Cliente</h3>
               <label className="lead-form__field">
-                <span>Email *</span>
-                <input
-                  type="email"
-                  required
-                  value={form.email}
-                  onChange={(e) => update({ email: e.target.value })}
-                  placeholder="luis@empresa.com"
-                />
+                <span>Cliente *</span>
+                <select
+                  value={form.companyId}
+                  onChange={(e) => onClientChange(e.target.value)}
+                  autoFocus
+                >
+                  <option value={NEW}>➕ Nuevo cliente…</option>
+                  {clients.length > 0 && (
+                    <optgroup label="Clientes existentes">
+                      {clients.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                          {c.ruc ? ` · ${c.ruc}` : ""}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+                <small>
+                  Elegí un cliente del maestro o creá uno nuevo. No se duplican.
+                </small>
               </label>
 
-              <label className="lead-form__field">
-                <span>WhatsApp / Celular</span>
-                <div className="lead-form__phone">
-                  <span className="lead-form__phone-prefix" aria-label="Perú">
-                    <span className="lead-form__flag" aria-hidden="true">🇵🇪</span>
-                    <span className="mono">+51</span>
-                  </span>
-                  <input
-                    type="tel"
-                    inputMode="numeric"
-                    value={form.phoneLocal}
-                    onChange={(e) => update({ phoneLocal: e.target.value.replace(/\D/g, "").slice(0, 9) })}
-                    placeholder="999 999 999"
-                    maxLength={9}
-                  />
-                </div>
-                <small>Sólo el número, 9 dígitos. El prefijo +51 se agrega automáticamente.</small>
-              </label>
+              {isNewClient && (
+                <>
+                  <div className="lead-form__row">
+                    <label className="lead-form__field" style={{ flex: 2 }}>
+                      <span>Razón social *</span>
+                      <input
+                        type="text"
+                        required
+                        value={form.companyName}
+                        onChange={(e) => update({ companyName: e.target.value })}
+                        placeholder="Mapfre Perú S.A."
+                      />
+                    </label>
+                    <label className="lead-form__field" style={{ flex: 1 }}>
+                      <span>RUC</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={form.ruc}
+                        onChange={(e) => update({ ruc: e.target.value.replace(/\D/g, "").slice(0, 11) })}
+                        placeholder="20512345678"
+                        maxLength={11}
+                        className="mono"
+                      />
+                    </label>
+                  </div>
+
+                  <label className="lead-form__field">
+                    <span>Industria / Sector</span>
+                    <input
+                      type="text"
+                      value={form.industry}
+                      onChange={(e) => update({ industry: e.target.value })}
+                      placeholder="Seguros, Banca, Salud, Retail…"
+                    />
+                  </label>
+                </>
+              )}
             </div>
 
             <div className="lead-form__section">
-              <h3>Empresa</h3>
-              <div className="lead-form__row">
-                <label className="lead-form__field" style={{ flex: 2 }}>
-                  <span>Razón social *</span>
-                  <input
-                    type="text"
-                    required
-                    value={form.companyName}
-                    onChange={(e) => update({ companyName: e.target.value })}
-                    placeholder="Mapfre Perú S.A."
-                  />
+              <h3>Contacto</h3>
+              {!isNewClient && (
+                <label className="lead-form__field">
+                  <span>Contacto</span>
+                  <select
+                    value={form.contactId}
+                    onChange={(e) => onContactChange(e.target.value)}
+                  >
+                    <option value={NEW}>➕ Nuevo contacto…</option>
+                    {clientContacts.length > 0 && (
+                      <optgroup label="Contactos del cliente">
+                        {clientContacts.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                            {c.email ? ` · ${c.email}` : ""}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                  </select>
+                  <small>
+                    {clientContacts.length > 0
+                      ? "Elegí un contacto existente o creá uno nuevo. No se duplican."
+                      : "Este cliente aún no tiene contactos. Creá el primero."}
+                  </small>
                 </label>
-                <label className="lead-form__field" style={{ flex: 1 }}>
-                  <span>RUC</span>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={form.ruc}
-                    onChange={(e) => update({ ruc: e.target.value.replace(/\D/g, "").slice(0, 11) })}
-                    placeholder="20512345678"
-                    maxLength={11}
-                    className="mono"
-                  />
-                </label>
-              </div>
+              )}
 
-              <label className="lead-form__field">
-                <span>Industria / Sector</span>
-                <input
-                  type="text"
-                  value={form.industry}
-                  onChange={(e) => update({ industry: e.target.value })}
-                  placeholder="Seguros, Banca, Salud, Retail…"
-                />
-              </label>
+              {isNewContact && (
+                <>
+                  <div className="lead-form__row">
+                    <label className="lead-form__field" style={{ flex: 1 }}>
+                      <span>Nombre *</span>
+                      <input
+                        type="text"
+                        required
+                        value={form.firstName}
+                        onChange={(e) => update({ firstName: e.target.value })}
+                        placeholder="Luis"
+                      />
+                    </label>
+                    <label className="lead-form__field" style={{ flex: 1 }}>
+                      <span>Apellido</span>
+                      <input
+                        type="text"
+                        value={form.lastName}
+                        onChange={(e) => update({ lastName: e.target.value })}
+                        placeholder="Telles Atto"
+                      />
+                    </label>
+                  </div>
+
+                  <label className="lead-form__field">
+                    <span>Email *</span>
+                    <input
+                      type="email"
+                      required
+                      value={form.email}
+                      onChange={(e) => update({ email: e.target.value })}
+                      placeholder="luis@empresa.com"
+                    />
+                  </label>
+
+                  <label className="lead-form__field">
+                    <span>WhatsApp / Celular</span>
+                    <div className="lead-form__phone">
+                      <span className="lead-form__phone-prefix" aria-label="Perú">
+                        <span className="lead-form__flag" aria-hidden="true">🇵🇪</span>
+                        <span className="mono">+51</span>
+                      </span>
+                      <input
+                        type="tel"
+                        inputMode="numeric"
+                        value={form.phoneLocal}
+                        onChange={(e) => update({ phoneLocal: e.target.value.replace(/\D/g, "").slice(0, 9) })}
+                        placeholder="999 999 999"
+                        maxLength={9}
+                      />
+                    </div>
+                    <small>Sólo el número, 9 dígitos. El prefijo +51 se agrega automáticamente.</small>
+                  </label>
+                </>
+              )}
             </div>
 
             <div className="lead-form__section">

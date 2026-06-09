@@ -26,6 +26,8 @@ type PrismaDeal = {
   lastActivityAt: Date | string;
   company: { id: string; name: string };
   owner: { id: string; initials: string };
+  contactId?: string | null;
+  contact?: { id: string; name: string } | null;
 };
 
 type PrismaUser = {
@@ -57,7 +59,9 @@ export function toClientDeal(d: PrismaDeal): Deal {
     projectStartAt: d.projectStartAt ? new Date(d.projectStartAt).toISOString() : null,
     projectEndAt: d.projectEndAt ? new Date(d.projectEndAt).toISOString() : null,
     lastActivity: Math.min(ageDays, 90),
-    contacts: 0,
+    contacts: d.contactId || d.contact ? 1 : 0,
+    contactId: d.contactId ?? d.contact?.id ?? null,
+    contactName: d.contact?.name ?? null,
     isRecurring: d.isRecurring,
     arr: d.mrr ? d.mrr * 12 : 0,
     source: d.source ?? null,
