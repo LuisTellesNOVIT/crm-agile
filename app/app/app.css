@@ -3064,11 +3064,11 @@ a.nav-item.is-active { color: var(--fg); }
   background: rgba(22, 163, 74, 0.30);
 }
 .pipe-list-table__row.is-firma {
-  background: rgba(22, 163, 74, 0.09);
-  box-shadow: inset 3px 0 0 rgba(22, 163, 74, 0.45);
+  background: rgba(14, 165, 233, 0.11);
+  box-shadow: inset 3px 0 0 rgba(14, 165, 233, 0.55);
 }
 .pipe-list-table__row.is-firma:hover {
-  background: rgba(22, 163, 74, 0.16);
+  background: rgba(14, 165, 233, 0.18);
 }
 /* Columna SaaS/año — ARR anual a la derecha del valor */
 .pipe-list-table__arr {
@@ -6215,10 +6215,17 @@ textarea.emp__input { resize: vertical; }
 .cf-table tbody tr.cf-table__row--won:hover .cf-table__proj { background: color-mix(in srgb, #16a34a 28%, var(--bg)); }
 .cf-table tbody tr.cf-table__row--won .cf-table__proj { box-shadow: inset 3px 0 0 #16a34a; }
 .cf-table tbody tr.cf-table__row--firma td,
-.cf-table tbody tr.cf-table__row--firma .cf-table__proj { background: color-mix(in srgb, #16a34a 9%, var(--bg)); }
+.cf-table tbody tr.cf-table__row--firma .cf-table__proj { background: color-mix(in srgb, #0ea5e9 11%, var(--bg)); }
 .cf-table tbody tr.cf-table__row--firma:hover td,
-.cf-table tbody tr.cf-table__row--firma:hover .cf-table__proj { background: color-mix(in srgb, #16a34a 15%, var(--bg)); }
-.cf-table tbody tr.cf-table__row--firma .cf-table__proj { box-shadow: inset 3px 0 0 color-mix(in srgb, #16a34a 50%, var(--bg)); }
+.cf-table tbody tr.cf-table__row--firma:hover .cf-table__proj { background: color-mix(in srgb, #0ea5e9 18%, var(--bg)); }
+.cf-table tbody tr.cf-table__row--firma .cf-table__proj { box-shadow: inset 3px 0 0 color-mix(in srgb, #0ea5e9 55%, var(--bg)); }
+
+/* Leyenda de colores de la tabla de flujo de caja */
+.cf-legend { display: flex; gap: 16px; align-items: center; padding: 0 2px 10px; }
+.cf-legend__item { display: inline-flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--fg-3); }
+.cf-legend__sw { width: 22px; height: 12px; border-radius: 4px; border: 1px solid var(--border-2); }
+.cf-legend__sw--won { background: color-mix(in srgb, #16a34a 22%, var(--bg)); box-shadow: inset 3px 0 0 #16a34a; }
+.cf-legend__sw--firma { background: color-mix(in srgb, #0ea5e9 18%, var(--bg)); box-shadow: inset 3px 0 0 #0ea5e9; }
 /* Desglose Setup/SaaS bajo el nombre del proyecto */
 .cf-table__split { display: block; font-family: var(--font-mono); font-size: 10px; margin-top: 3px; font-weight: 600; }
 

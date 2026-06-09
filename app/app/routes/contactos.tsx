@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useFetcher } from "react-router";
 import { Icon } from "../components/shell/Icon";
 import { useActiveWorkspace } from "../lib/store";
 import type { ContactLite } from "../lib/types";
@@ -25,8 +26,38 @@ export default function ContactosPage() {
   const ws = useActiveWorkspace();
   const [q, setQ] = useState("");
   const [grouped, setGrouped] = useState(true);
+  const [sel, setSel] = useState<Set<string>>(() => new Set());
+  const fetcher = useFetcher<{ ok?: boolean; deleted?: number; error?: string }>();
+  const deleting = fetcher.state !== "idle";
 
   const contacts = ws.contacts ?? [];
+
+  const toggle = (id: string) =>
+    setSel((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const clearSel = () => setSel(new Set());
+
+  // Al terminar el borrado con éxito, limpiamos la selección (el loader se
+  // revalida solo al completar la action del fetcher).
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data?.ok) clearSel();
+  }, [fetcher.state, fetcher.data]);
+
+  const onDelete = () => {
+    if (sel.size === 0 || deleting) return;
+    const ok = window.confirm(
+      `¿Eliminar ${sel.size} contacto${sel.size !== 1 ? "s" : ""}? Los tratos asociados quedarán sin contacto. Esta acción no se puede deshacer.`,
+    );
+    if (!ok) return;
+    fetcher.submit(
+      { ids: [...sel].join(",") },
+      { method: "POST", action: "/api/contact-delete" },
+    );
+  };
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -93,6 +124,34 @@ export default function ContactosPage() {
         </div>
       </div>
 
+      {filtered.length > 0 && (
+        <div className={`contacts-selbar ${sel.size > 0 ? "is-active" : ""}`.trim()}>
+          <label className="contacts-checkall">
+            <input
+              type="checkbox"
+              checked={filtered.every((c) => sel.has(c.id))}
+              ref={(el) => {
+                if (el) el.indeterminate = sel.size > 0 && !filtered.every((c) => sel.has(c.id));
+              }}
+              onChange={(e) => {
+                if (e.target.checked) setSel(new Set(filtered.map((c) => c.id)));
+                else clearSel();
+              }}
+            />
+            <span>{sel.size > 0 ? `${sel.size} seleccionado${sel.size !== 1 ? "s" : ""}` : "Seleccionar todo"}</span>
+          </label>
+          {fetcher.data?.error && <span className="contacts-selbar__err">⚠ {fetcher.data.error}</span>}
+          {sel.size > 0 && (
+            <div className="contacts-selbar__actions">
+              <button type="button" className="btn" onClick={clearSel} disabled={deleting}>Cancelar</button>
+              <button type="button" className="btn btn--danger" onClick={onDelete} disabled={deleting}>
+                <Icon name="more" size={13} /> {deleting ? "Eliminando…" : `Eliminar ${sel.size}`}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {filtered.length === 0 ? (
         <div className="contacts-empty">
           {contacts.length === 0
@@ -109,7 +168,9 @@ export default function ContactosPage() {
                 <span className="contacts-card__count">{g.items.length} contacto{g.items.length !== 1 ? "s" : ""}</span>
               </div>
               <div className="contacts-list">
-                {g.items.map((c) => <ContactRow key={c.id} c={c} showClient={false} />)}
+                {g.items.map((c) => (
+                  <ContactRow key={c.id} c={c} showClient={false} selected={sel.has(c.id)} onToggle={() => toggle(c.id)} />
+                ))}
               </div>
             </section>
           ))}
@@ -117,7 +178,9 @@ export default function ContactosPage() {
       ) : (
         <section className="contacts-card">
           <div className="contacts-list contacts-list--flat">
-            {filtered.map((c) => <ContactRow key={c.id} c={c} showClient />)}
+            {filtered.map((c) => (
+              <ContactRow key={c.id} c={c} showClient selected={sel.has(c.id)} onToggle={() => toggle(c.id)} />
+            ))}
           </div>
         </section>
       )}
@@ -153,10 +216,22 @@ export default function ContactosPage() {
         .contacts-card__count { margin-left: auto; font-size: 11px; color: var(--fg-4); font-family: var(--font-mono); }
 
         .contacts-list { display: flex; flex-direction: column; }
-        .contact-row { display: grid; grid-template-columns: 34px 1.4fr 1.6fr 1fr; gap: 12px; align-items: center; padding: 9px 14px; border-bottom: 1px solid var(--border-2); }
-        .contacts-list--flat .contact-row { grid-template-columns: 34px 1.3fr 1.5fr 1fr 1.1fr; }
+        .contact-row { display: grid; grid-template-columns: 26px 34px 1.4fr 1.6fr 1fr; gap: 12px; align-items: center; padding: 9px 14px; border-bottom: 1px solid var(--border-2); }
+        .contacts-list--flat .contact-row { grid-template-columns: 26px 34px 1.3fr 1.5fr 1fr 1.1fr; }
         .contact-row:last-child { border-bottom: 0; }
         .contact-row:hover { background: var(--bg-2); }
+        .contact-row.is-selected { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+        .contact-row__check { display: flex; align-items: center; justify-content: center; }
+        .contact-row__check input { width: 15px; height: 15px; cursor: pointer; accent-color: var(--accent); }
+
+        .contacts-selbar { display: flex; align-items: center; gap: 14px; padding: 8px 13px; border: 1px solid var(--border-2); border-radius: 10px; background: var(--bg); }
+        .contacts-selbar.is-active { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); background: color-mix(in srgb, var(--accent) 5%, var(--bg)); }
+        .contacts-checkall { display: inline-flex; align-items: center; gap: 9px; font-size: 12.5px; color: var(--fg-2); cursor: pointer; font-weight: 500; }
+        .contacts-checkall input { width: 15px; height: 15px; cursor: pointer; accent-color: var(--accent); }
+        .contacts-selbar__actions { margin-left: auto; display: flex; gap: 8px; }
+        .contacts-selbar__err { color: var(--danger); font-size: 12px; }
+        .contacts-selbar .btn--danger { display: inline-flex; align-items: center; gap: 6px; background: var(--danger); border-color: var(--danger); color: #fff; }
+        .contacts-selbar .btn--danger:hover:not(:disabled) { filter: brightness(.94); }
         .contact-row__av { width: 30px; height: 30px; border-radius: 50%; color: #fff; display: grid; place-items: center; font-size: 11px; font-weight: 700; font-family: var(--font-mono); }
         .contact-row__id { display: flex; flex-direction: column; min-width: 0; }
         .contact-row__name { font-weight: 600; font-size: 13px; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -172,9 +247,22 @@ export default function ContactosPage() {
   );
 }
 
-function ContactRow({ c, showClient }: { c: ContactLite; showClient: boolean }) {
+function ContactRow({
+  c,
+  showClient,
+  selected,
+  onToggle,
+}: {
+  c: ContactLite;
+  showClient: boolean;
+  selected: boolean;
+  onToggle: () => void;
+}) {
   return (
-    <div className="contact-row">
+    <div className={`contact-row ${selected ? "is-selected" : ""}`.trim()}>
+      <label className="contact-row__check" onClick={(e) => e.stopPropagation()}>
+        <input type="checkbox" checked={selected} onChange={onToggle} aria-label={`Seleccionar ${c.name}`} />
+      </label>
       <span className="contact-row__av" style={{ background: avatarBg(c.name) }}>{initialsOf(c.name)}</span>
       <span className="contact-row__id">
         <span className="contact-row__name">{c.name}</span>

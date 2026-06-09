@@ -1575,6 +1575,10 @@ function CashFlowTable({ deals, currency, onOpenDeal }: { deals: Deal[]; currenc
         <span className="card__sub">{data.projects.length} proyectos · Σ {fmtMoney(data.grand, currency)}</span>
       </div>
       <div className="card__b">
+        <div className="cf-legend">
+          <span className="cf-legend__item"><i className="cf-legend__sw cf-legend__sw--won" /> Ganado</span>
+          <span className="cf-legend__item"><i className="cf-legend__sw cf-legend__sw--firma" /> En firma</span>
+        </div>
         <div className="cf-table-wrap">
           <table className="cf-table">
             <thead>
@@ -1828,12 +1832,6 @@ export default function DashboardRoute() {
       {/* ───── Flujo de caja detallado mes a mes (tipo Excel) ───── */}
       <div className="dash__row" style={{ gridTemplateColumns: "1fr" }}>
         <CashFlowTable deals={ws.deals} currency={currency} onOpenDeal={(id) => setSelectedDeal(id)} />
-      </div>
-
-      {/* ───── Facturación mensual: SETUP por etapa + SaaS (charts independientes) ───── */}
-      <div className="dash__row" style={{ gridTemplateColumns: "1fr 1fr" }}>
-        <SetupByStageMonthlyChart stages={ws.stages} deals={ws.deals} today={ws.today} currency={currency} />
-        <MonthlyBillingChart deals={ws.deals} today={ws.today} currency={currency} kind="saas" />
       </div>
 
       {/* ───── Top 5 clientes (pie) + Embudo por etapa ───── */}

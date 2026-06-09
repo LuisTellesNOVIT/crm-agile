@@ -12,6 +12,7 @@ export default [
   route("api/sequence-update", "routes/api.sequence-update.tsx"),
   route("api/sequence-enroll", "routes/api.sequence-enroll.tsx"),
   route("api/scheduled-message", "routes/api.scheduled-message.tsx"),
+  route("api/contact-delete", "routes/api.contact-delete.tsx"),
   layout("routes/_app.tsx", [
     index("routes/dashboard.tsx"),
     route("inbox", "routes/inbox.tsx"),
