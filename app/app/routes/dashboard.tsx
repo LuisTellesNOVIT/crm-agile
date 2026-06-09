@@ -1513,7 +1513,9 @@ function CashFlowCard({ deals, currency, onOpenDeal }: { deals: Deal[]; currency
    CashFlowTable — flujo de caja DETALLADO mes a mes (vista Excel):
    filas = proyectos estratégicos, columnas = 12 meses, + totales.
    ============================================================ */
-function CashFlowTable({ deals, currency, onOpenDeal }: { deals: Deal[]; currency: Currency; onOpenDeal?: (id: string) => void }) {
+function CashFlowTable({ deals, currency, stages, onOpenDeal }: { deals: Deal[]; currency: Currency; stages: { id: string; label: string; color: string }[]; onOpenDeal?: (id: string) => void }) {
+  const stageColor = (id: string) => stages.find((s) => s.id === id)?.color ?? "var(--fg-4)";
+  const stageLabel = (id: string) => stages.find((s) => s.id === id)?.label ?? id;
   const data = useMemo(() => {
     const today = new Date();
     const now0 = today.getFullYear() * 12 + today.getMonth();
@@ -1556,8 +1558,16 @@ function CashFlowTable({ deals, currency, onOpenDeal }: { deals: Deal[]; currenc
     const setupBy = new Array(N).fill(0), saasBy = new Array(N).fill(0);
     for (const p of projects) for (let i = 0; i < N; i++) { setupBy[i] += p.setup[i]; saasBy[i] += p.saas[i]; }
     const totalBy = setupBy.map((s, i) => s + saasBy[i]);
+    const maxCell = Math.max(1, ...projects.flatMap((p) => p.monthly).filter((v) => v > 0));
+    // Tramos contiguos de años para la super-cabecera (2026 / 2027 …)
+    const yearSpans: { year: number; span: number }[] = [];
+    for (const m of months) {
+      const last = yearSpans[yearSpans.length - 1];
+      if (last && last.year === m.year) last.span++;
+      else yearSpans.push({ year: m.year, span: 1 });
+    }
     return {
-      months, projects, setupBy, saasBy, totalBy,
+      months, projects, setupBy, saasBy, totalBy, maxCell, yearSpans,
       sumSetup: setupBy.reduce((a, b) => a + b, 0),
       sumSaas: saasBy.reduce((a, b) => a + b, 0),
       grand: totalBy.reduce((a, b) => a + b, 0),
@@ -1566,6 +1576,9 @@ function CashFlowTable({ deals, currency, onOpenDeal }: { deals: Deal[]; currenc
 
   if (data.projects.length === 0) return null;
   const cell = (v: number) => (v > 0 ? fmtMoney(v, currency) : "·");
+  // Heatmap tipográfico: las cifras grandes resaltan, las chicas se atenúan.
+  const heat = (v: number) =>
+    v <= 0 ? "is-zero" : v >= data.maxCell * 0.5 ? "cf-hi" : v >= data.maxCell * 0.16 ? "cf-mid" : "cf-lo";
 
   return (
     <div className="card">
@@ -1578,13 +1591,23 @@ function CashFlowTable({ deals, currency, onOpenDeal }: { deals: Deal[]; currenc
         <div className="cf-legend">
           <span className="cf-legend__item"><i className="cf-legend__sw cf-legend__sw--won" /> Ganado</span>
           <span className="cf-legend__item"><i className="cf-legend__sw cf-legend__sw--firma" /> En firma</span>
+          <span className="cf-legend__sep" />
+          <span className="cf-legend__item"><i className="cf-sw cf-sw--setup" /> Setup</span>
+          <span className="cf-legend__item"><i className="cf-sw cf-sw--saas" /> SaaS</span>
         </div>
         <div className="cf-table-wrap">
           <table className="cf-table">
             <thead>
+              <tr className="cf-table__yr-row">
+                <th className="cf-table__proj" />
+                {data.yearSpans.map((y) => (
+                  <th key={y.year} className="cf-table__yr" colSpan={y.span}>{y.year}</th>
+                ))}
+                <th className="cf-table__tot" />
+              </tr>
               <tr>
                 <th className="cf-table__proj">Proyecto</th>
-                {data.months.map((m, i) => <th key={i}>{m.label}<small>{String(m.year).slice(2)}</small></th>)}
+                {data.months.map((m, i) => <th key={i}>{m.label}</th>)}
                 <th className="cf-table__tot">Total</th>
               </tr>
             </thead>
@@ -1593,23 +1616,28 @@ function CashFlowTable({ deals, currency, onOpenDeal }: { deals: Deal[]; currenc
                 <tr
                   key={p.id}
                   onClick={() => onOpenDeal?.(p.id)}
-                  title={`Abrir el trato${p.stage === "won" ? " · Ganado" : p.stage === "signing" ? " · En firma" : ""}`}
+                  title={`${p.company} · ${p.name} — ${stageLabel(p.stage)} · clic para abrir`}
                   className={p.stage === "won" ? "cf-table__row--won" : p.stage === "signing" ? "cf-table__row--firma" : ""}
                 >
-                  <td className="cf-table__proj" title={`${p.company} · ${p.name}`}><b>{p.company}</b> · <span className="cf-pn">{p.name}</span></td>
-                  {p.monthly.map((v, i) => <td key={i} className={v > 0 ? "" : "is-zero"} title={`Setup ${fmtMoney(p.setup[i], currency)} · SaaS ${fmtMoney(p.saas[i], currency)}`}>{cell(v)}</td>)}
+                  <td className="cf-table__proj">
+                    <span className="cf-proj">
+                      <i className="cf-dot" style={{ background: stageColor(p.stage) }} />
+                      <span className="cf-proj__txt"><b>{p.company}</b> <span className="cf-pn">· {p.name}</span></span>
+                    </span>
+                  </td>
+                  {p.monthly.map((v, i) => <td key={i} className={heat(v)} title={`Setup ${fmtMoney(p.setup[i], currency)} · SaaS ${fmtMoney(p.saas[i], currency)}`}>{cell(v)}</td>)}
                   <td className="cf-table__tot">{fmtMoney(p.total, currency)}</td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
-              <tr className="cf-table__sub">
-                <td className="cf-table__proj">Setup</td>
+              <tr className="cf-table__sub cf-table__sub--first">
+                <td className="cf-table__proj"><i className="cf-sw cf-sw--setup" /> Setup</td>
                 {data.setupBy.map((v, i) => <td key={i} className={v > 0 ? "" : "is-zero"}>{cell(v)}</td>)}
                 <td className="cf-table__tot">{fmtMoney(data.sumSetup, currency)}</td>
               </tr>
               <tr className="cf-table__sub">
-                <td className="cf-table__proj">SaaS</td>
+                <td className="cf-table__proj"><i className="cf-sw cf-sw--saas" /> SaaS</td>
                 {data.saasBy.map((v, i) => <td key={i} className={v > 0 ? "" : "is-zero"}>{cell(v)}</td>)}
                 <td className="cf-table__tot">{fmtMoney(data.sumSaas, currency)}</td>
               </tr>
@@ -1831,7 +1859,7 @@ export default function DashboardRoute() {
 
       {/* ───── Flujo de caja detallado mes a mes (tipo Excel) ───── */}
       <div className="dash__row" style={{ gridTemplateColumns: "1fr" }}>
-        <CashFlowTable deals={ws.deals} currency={currency} onOpenDeal={(id) => setSelectedDeal(id)} />
+        <CashFlowTable deals={ws.deals} currency={currency} stages={ws.stages} onOpenDeal={(id) => setSelectedDeal(id)} />
       </div>
 
       {/* ───── Top 5 clientes (pie) + Embudo por etapa ───── */}
