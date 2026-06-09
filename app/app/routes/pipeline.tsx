@@ -1109,7 +1109,7 @@ function ListRow({
 
   return (
     <div
-      className={`pipe-list-table__row ${hideStageColumn ? "no-stage-col" : ""} ${isHighSaaS(deal) ? "is-high-saas" : ""}`.trim()}
+      className={`pipe-list-table__row ${hideStageColumn ? "no-stage-col" : ""} ${isHighSaaS(deal) ? "is-high-saas" : ""} ${deal.stage === "won" ? "is-won" : deal.stage === "signing" ? "is-firma" : ""}`.trim()}
       title={
         isHighSaaS(deal)
           ? `Alto valor recurrente — ARR anual ${fmtMoney(deal.arr, currency)} supera el setup ${fmtMoney(deal.value, currency)}`

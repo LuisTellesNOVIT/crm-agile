@@ -26,6 +26,7 @@ export default [
     route("schema", "routes/schema.tsx"),
     route("settings", "routes/settings.tsx"),
     route("empresas", "routes/empresas.tsx"),
+    route("contactos", "routes/contactos.tsx"),
     route("users", "routes/users.tsx"),
     route("atoms", "routes/atoms.tsx"),
   ]),

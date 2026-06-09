@@ -26,6 +26,7 @@ const VIEWS: View[] = [
   { id: "objects", path: "/objects", label: "Custom objects", icon: "database", group: "data" },
   { id: "schema", path: "/schema", label: "Schema (Prisma)", icon: "code", group: "data" },
   { id: "empresas", path: "/empresas", label: "Empresas (SUNAT)", icon: "users", group: "data" },
+  { id: "contactos", path: "/contactos", label: "Contactos", icon: "user", group: "data" },
   { id: "users", path: "/users", label: "Usuarios", icon: "user", group: "data" },
 ];
 

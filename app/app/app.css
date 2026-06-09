@@ -745,8 +745,10 @@ body.auth-page {
 
 .card {
   background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow .15s, border-color .15s;
 }
 .card__h {
   display: flex; align-items: center; gap: 8px;
@@ -3015,6 +3017,22 @@ a.nav-item.is-active { color: var(--fg); }
 }
 .pipe-list-table__row.is-high-saas:hover {
   background: rgba(250, 204, 21, 0.28);
+}
+/* Filas por estado del trato: Ganado = verde, En firma = verde claro.
+   Van después de is-high-saas para que el estado tenga prioridad de color. */
+.pipe-list-table__row.is-won {
+  background: rgba(22, 163, 74, 0.20);
+  box-shadow: inset 3px 0 0 #16a34a;
+}
+.pipe-list-table__row.is-won:hover {
+  background: rgba(22, 163, 74, 0.30);
+}
+.pipe-list-table__row.is-firma {
+  background: rgba(22, 163, 74, 0.09);
+  box-shadow: inset 3px 0 0 rgba(22, 163, 74, 0.45);
+}
+.pipe-list-table__row.is-firma:hover {
+  background: rgba(22, 163, 74, 0.16);
 }
 /* Columna SaaS/año — ARR anual a la derecha del valor */
 .pipe-list-table__arr {
@@ -6152,6 +6170,19 @@ textarea.emp__input { resize: vertical; }
 .cf-table thead .cf-table__tot,
 .cf-table tfoot .cf-table__tot { background: var(--fg) !important; color: #fff !important; }
 .cf-table tbody tr:hover .cf-table__tot { background: #000 !important; color: #fff !important; }
+
+/* Filas por estado del trato: Ganado = verde, En firma = verde claro.
+   (la columna Total se mantiene en negro por la regla !important de arriba) */
+.cf-table tbody tr.cf-table__row--won td,
+.cf-table tbody tr.cf-table__row--won .cf-table__proj { background: color-mix(in srgb, #16a34a 20%, var(--bg)); }
+.cf-table tbody tr.cf-table__row--won:hover td,
+.cf-table tbody tr.cf-table__row--won:hover .cf-table__proj { background: color-mix(in srgb, #16a34a 28%, var(--bg)); }
+.cf-table tbody tr.cf-table__row--won .cf-table__proj { box-shadow: inset 3px 0 0 #16a34a; }
+.cf-table tbody tr.cf-table__row--firma td,
+.cf-table tbody tr.cf-table__row--firma .cf-table__proj { background: color-mix(in srgb, #16a34a 9%, var(--bg)); }
+.cf-table tbody tr.cf-table__row--firma:hover td,
+.cf-table tbody tr.cf-table__row--firma:hover .cf-table__proj { background: color-mix(in srgb, #16a34a 15%, var(--bg)); }
+.cf-table tbody tr.cf-table__row--firma .cf-table__proj { box-shadow: inset 3px 0 0 color-mix(in srgb, #16a34a 50%, var(--bg)); }
 /* Desglose Setup/SaaS bajo el nombre del proyecto */
 .cf-table__split { display: block; font-family: var(--font-mono); font-size: 10px; margin-top: 3px; font-weight: 600; }
 

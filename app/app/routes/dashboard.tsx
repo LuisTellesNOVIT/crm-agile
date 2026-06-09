@@ -1524,11 +1524,11 @@ function CashFlowTable({ deals, currency, onOpenDeal }: { deals: Deal[]; currenc
       const dt = new Date(Math.floor(m / 12), m % 12, 1);
       return { label: dt.toLocaleDateString("es", { month: "short" }).replace(".", ""), year: dt.getFullYear() };
     });
-    type P = { id: string; company: string; name: string; setup: number[]; saas: number[] };
+    type P = { id: string; company: string; name: string; stage: string; setup: number[]; saas: number[] };
     const map = new Map<string, P>();
     const getP = (d: Deal) => {
       let p = map.get(d.id);
-      if (!p) { p = { id: d.id, company: d.company, name: d.name, setup: new Array(N).fill(0), saas: new Array(N).fill(0) }; map.set(d.id, p); }
+      if (!p) { p = { id: d.id, company: d.company, name: d.name, stage: d.stage, setup: new Array(N).fill(0), saas: new Array(N).fill(0) }; map.set(d.id, p); }
       return p;
     };
     for (const d of deals) {
@@ -1586,7 +1586,12 @@ function CashFlowTable({ deals, currency, onOpenDeal }: { deals: Deal[]; currenc
             </thead>
             <tbody>
               {data.projects.map((p) => (
-                <tr key={p.id} onClick={() => onOpenDeal?.(p.id)} title="Abrir el trato">
+                <tr
+                  key={p.id}
+                  onClick={() => onOpenDeal?.(p.id)}
+                  title={`Abrir el trato${p.stage === "won" ? " · Ganado" : p.stage === "signing" ? " · En firma" : ""}`}
+                  className={p.stage === "won" ? "cf-table__row--won" : p.stage === "signing" ? "cf-table__row--firma" : ""}
+                >
                   <td className="cf-table__proj" title={`${p.company} · ${p.name}`}><b>{p.company}</b> · <span className="cf-pn">{p.name}</span></td>
                   {p.monthly.map((v, i) => <td key={i} className={v > 0 ? "" : "is-zero"} title={`Setup ${fmtMoney(p.setup[i], currency)} · SaaS ${fmtMoney(p.saas[i], currency)}`}>{cell(v)}</td>)}
                   <td className="cf-table__tot">{fmtMoney(p.total, currency)}</td>
