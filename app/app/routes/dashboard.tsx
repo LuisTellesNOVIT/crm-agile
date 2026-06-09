@@ -1549,6 +1549,7 @@ function CashFlowTable({ deals, currency, stages, onOpenDeal }: { deals: Deal[];
       return p;
     };
     for (const d of deals) {
+      if (d.stage === "lost") continue;                   // los perdidos nunca entran al flujo de caja
       if (selStages && !selStages.has(d.stage)) continue; // filtro por estado del lead
       if (strategicOnly && !d.strategic) continue;  // filtro estratégico
       const start = d.projectStartAt ? new Date(d.projectStartAt) : null;
