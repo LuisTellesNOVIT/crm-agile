@@ -809,7 +809,7 @@ export function ProjectGanttCard({
   currency: Currency;
   onOpenDeal: (id: string) => void;
 }) {
-  const [horizon, setHorizon] = useState<Horizon>(36);
+  const [horizon, setHorizon] = useState<Horizon>(12);
   const open = useMemo(
     () => deals.filter((d) => d.stage !== "won" && d.stage !== "lost"),
     [deals],
