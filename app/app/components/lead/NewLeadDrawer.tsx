@@ -94,18 +94,34 @@ export function NewLeadDrawer({ onClose }: { onClose: () => void }) {
 
   const isNewClient = form.companyId === NEW;
   const isNewContact = form.contactId === NEW;
-  // Contactos del cliente elegido (sólo si es un cliente existente del maestro)
+
+  // Contactos del cliente elegido (cuando es un cliente existente del maestro).
   const clientContacts = isNewClient
     ? []
     : allContacts
         .filter((c) => c.companyId === form.companyId)
         .sort((a, b) => a.name.localeCompare(b.name, "es"));
 
+  // Maestro completo agrupado por cliente (para elegir un contacto cuando el
+  // cliente todavía es "nuevo": al elegirlo, su cliente se autocompleta).
+  const contactsByClient = (() => {
+    const groups = new Map<string, { companyName: string; items: typeof allContacts }>();
+    for (const c of [...allContacts].sort((a, b) => a.name.localeCompare(b.name, "es"))) {
+      const g = groups.get(c.companyId) ?? { companyName: c.companyName, items: [] };
+      g.items.push(c);
+      groups.set(c.companyId, g);
+    }
+    return [...groups.values()].sort((a, b) =>
+      a.companyName.localeCompare(b.companyName, "es"),
+    );
+  })();
+
   // Al cambiar de cliente, reseteamos el contacto (sus contactos cambian).
   const onClientChange = (value: string) => {
     setForm((f) => ({ ...f, companyId: value, contactId: NEW }));
   };
-  // Al elegir un contacto existente, prellenamos sus datos (sólo display).
+  // Al elegir un contacto existente: lo asignamos, autocompletamos su cliente
+  // (un contacto pertenece a un cliente) y prellenamos sus datos de display.
   const onContactChange = (value: string) => {
     if (value === NEW) {
       setForm((f) => ({ ...f, contactId: NEW }));
@@ -115,6 +131,8 @@ export function NewLeadDrawer({ onClose }: { onClose: () => void }) {
     setForm((f) => ({
       ...f,
       contactId: value,
+      // El cliente sigue al contacto (evita inconsistencias contacto↔cliente).
+      companyId: c?.companyId ?? f.companyId,
       firstName: c?.name ?? f.firstName,
       lastName: "",
       email: c?.email ?? f.email,
@@ -269,32 +287,45 @@ export function NewLeadDrawer({ onClose }: { onClose: () => void }) {
 
             <div className="lead-form__section">
               <h3>Contacto</h3>
-              {!isNewClient && (
-                <label className="lead-form__field">
-                  <span>Contacto</span>
-                  <select
-                    value={form.contactId}
-                    onChange={(e) => onContactChange(e.target.value)}
-                  >
-                    <option value={NEW}>➕ Nuevo contacto…</option>
-                    {clientContacts.length > 0 && (
-                      <optgroup label="Contactos del cliente">
-                        {clientContacts.map((c) => (
+              <label className="lead-form__field">
+                <span>Contacto *</span>
+                <select
+                  value={form.contactId}
+                  onChange={(e) => onContactChange(e.target.value)}
+                >
+                  <option value={NEW}>➕ Nuevo contacto…</option>
+                  {!isNewClient && clientContacts.length > 0 && (
+                    <optgroup label="Contactos del cliente">
+                      {clientContacts.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                          {c.email ? ` · ${c.email}` : ""}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {/* Cliente nuevo: ofrecemos el maestro completo; al elegir
+                      un contacto, su cliente se autocompleta arriba. */}
+                  {isNewClient &&
+                    contactsByClient.map((g) => (
+                      <optgroup key={g.companyName} label={g.companyName}>
+                        {g.items.map((c) => (
                           <option key={c.id} value={c.id}>
                             {c.name}
                             {c.email ? ` · ${c.email}` : ""}
                           </option>
                         ))}
                       </optgroup>
-                    )}
-                  </select>
-                  <small>
-                    {clientContacts.length > 0
+                    ))}
+                </select>
+                <small>
+                  {isNewClient
+                    ? "Elegí un contacto del maestro (su cliente se completa solo) o creá uno nuevo."
+                    : clientContacts.length > 0
                       ? "Elegí un contacto existente o creá uno nuevo. No se duplican."
                       : "Este cliente aún no tiene contactos. Creá el primero."}
-                  </small>
-                </label>
-              )}
+                </small>
+              </label>
 
               {isNewContact && (
                 <>
