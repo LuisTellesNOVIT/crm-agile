@@ -1,5 +1,6 @@
 import { useActiveWorkspace, useAppStore } from "../lib/store";
 import { ForecastHorizons } from "../components/dashboard/ForecastHorizons";
+import { CashFlowTable } from "./dashboard";
 
 export default function ForecastRoute() {
   const ws = useActiveWorkspace();
@@ -13,6 +14,14 @@ export default function ForecastRoute() {
         today={ws.today}
         currency={currency}
         onOpenDeal={(id) => setSelectedDeal(id)}
+      />
+      {/* Flujo de caja detallado · default "Todos" (todos los proyectos, no solo estratégicos) */}
+      <CashFlowTable
+        deals={ws.deals}
+        currency={currency}
+        stages={ws.stages}
+        onOpenDeal={(id) => setSelectedDeal(id)}
+        defaultStrategicOnly={false}
       />
     </div>
   );

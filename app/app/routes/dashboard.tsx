@@ -1513,13 +1513,13 @@ function CashFlowCard({ deals, currency, onOpenDeal }: { deals: Deal[]; currency
    CashFlowTable — flujo de caja DETALLADO mes a mes (vista Excel):
    filas = proyectos estratégicos, columnas = 12 meses, + totales.
    ============================================================ */
-function CashFlowTable({ deals, currency, stages, onOpenDeal }: { deals: Deal[]; currency: Currency; stages: { id: string; label: string; color: string }[]; onOpenDeal?: (id: string) => void }) {
+export function CashFlowTable({ deals, currency, stages, onOpenDeal, defaultStrategicOnly = true }: { deals: Deal[]; currency: Currency; stages: { id: string; label: string; color: string }[]; onOpenDeal?: (id: string) => void; defaultStrategicOnly?: boolean }) {
   const stageLabel = (id: string) => stages.find((s) => s.id === id)?.label ?? id;
   // ── Filtros: etapas del lead (multi-select) + estratégico ──
   const filterStages = stages.filter((s) => s.id !== "lost");
   // null = todas las etapas seleccionadas (default robusto aunque stages aún no cargue)
   const [selStages, setSelStages] = useState<Set<string> | null>(null);
-  const [strategicOnly, setStrategicOnly] = useState(true);
+  const [strategicOnly, setStrategicOnly] = useState(defaultStrategicOnly);
   const stageOn = (id: string) => !selStages || selStages.has(id);
   const toggleStage = (id: string) =>
     setSelStages((prev) => {
