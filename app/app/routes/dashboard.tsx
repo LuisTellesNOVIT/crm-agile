@@ -886,7 +886,7 @@ function LeaderboardCompare({ data, currency, onOwner }: { data: OwnerRow[]; cur
         </div>
       </div>
       <div className="ws-compare__legend">
-        {data.map((o) => {
+        {data.filter((o) => o.deals > 0).map((o) => {
           const pct = total ? (o.won / total) * 100 : 0;
           const clickable = !!onOwner;
           return (
