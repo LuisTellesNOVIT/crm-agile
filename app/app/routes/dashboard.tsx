@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { Fragment, useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
 import {
   useActiveWorkspace,
@@ -1531,6 +1531,8 @@ export function CashFlowTable({ deals, currency, stages, onOpenDeal, defaultStra
   const allStagesOn = !selStages || filterStages.every((s) => selStages.has(s.id));
   // "Todos" = reset: siempre selecciona todas las etapas (nunca vacía).
   const resetStages = () => setSelStages(null);
+  // Agrupación: por cliente (default), por estado del lead, o sin agrupar.
+  const [groupBy, setGroupBy] = useState<"client" | "stage" | "none">("client");
   const data = useMemo(() => {
     const today = new Date();
     const now0 = today.getFullYear() * 12 + today.getMonth();
@@ -1596,6 +1598,29 @@ export function CashFlowTable({ deals, currency, stages, onOpenDeal, defaultStra
   const heat = (v: number) =>
     v <= 0 ? "is-zero" : v >= data.maxCell * 0.5 ? "cf-hi" : v >= data.maxCell * 0.16 ? "cf-mid" : "cf-lo";
 
+  // Agrupación de proyectos (cliente / estado / ninguno) con subtotales por grupo.
+  type Proj = (typeof data.projects)[number];
+  const groups: { label: string | null; items: Proj[]; monthly: number[]; total: number }[] =
+    groupBy === "none"
+      ? [{ label: null, items: data.projects, monthly: [], total: 0 }]
+      : (() => {
+          const keyOf = (p: Proj) => (groupBy === "client" ? p.company : stageLabel(p.stage));
+          const map = new Map<string, Proj[]>();
+          for (const p of data.projects) {
+            const k = keyOf(p);
+            if (!map.has(k)) map.set(k, []);
+            map.get(k)!.push(p);
+          }
+          return [...map.entries()]
+            .map(([label, items]) => ({
+              label,
+              items,
+              monthly: data.months.map((_, i) => items.reduce((a, p) => a + p.monthly[i], 0)),
+              total: items.reduce((a, p) => a + p.total, 0),
+            }))
+            .sort((a, b) => b.total - a.total);
+        })();
+
   return (
     <div className="card">
       <div className="card__h">
@@ -1647,6 +1672,13 @@ export function CashFlowTable({ deals, currency, stages, onOpenDeal, defaultStra
           >
             ★ Solo estratégicos
           </button>
+          <span className="cf-filters__sep" />
+          <span className="cf-filters__lbl">Agrupar</span>
+          <div className="cf-seg">
+            <button type="button" className={groupBy === "client" ? "is-on" : ""} onClick={() => setGroupBy("client")}>Cliente</button>
+            <button type="button" className={groupBy === "stage" ? "is-on" : ""} onClick={() => setGroupBy("stage")}>Estado</button>
+            <button type="button" className={groupBy === "none" ? "is-on" : ""} onClick={() => setGroupBy("none")}>Ninguno</button>
+          </div>
         </div>
 
         {data.projects.length === 0 ? (
@@ -1669,20 +1701,46 @@ export function CashFlowTable({ deals, currency, stages, onOpenDeal, defaultStra
               </tr>
             </thead>
             <tbody>
-              {data.projects.map((p) => (
-                <tr
-                  key={p.id}
-                  onClick={() => onOpenDeal?.(p.id)}
-                  title={`${p.company} · ${p.name} — ${stageLabel(p.stage)} · clic para abrir`}
-                  className={p.stage === "won" ? "cf-table__row--won" : p.stage === "signing" ? "cf-table__row--firma" : ""}
-                >
-                  <td className="cf-table__proj" title={`${p.company} · ${p.name}`}>
-                    <b>{p.company}</b> <span className="cf-pn">· {p.name}</span>
-                  </td>
-                  {p.monthly.map((v, i) => <td key={i} className={heat(v)} title={`Setup ${fmtMoney(p.setup[i], currency)} · SaaS ${fmtMoney(p.saas[i], currency)}`}>{cell(v)}</td>)}
-                  <td className="cf-table__tot">{fmtMoney(p.total, currency)}</td>
-                </tr>
-              ))}
+              {(() => {
+                let n = 0;
+                return groups.map((g) => (
+                  <Fragment key={g.label ?? "__flat__"}>
+                    {g.label != null && (
+                      <tr className="cf-grp">
+                        <td className="cf-table__proj">
+                          <span className="cf-grp__name">{g.label}</span>
+                          <span className="cf-grp__count">{g.items.length}</span>
+                        </td>
+                        {g.monthly.map((v, i) => <td key={i} className={v > 0 ? "" : "is-zero"}>{cell(v)}</td>)}
+                        <td className="cf-table__tot">{fmtMoney(g.total, currency)}</td>
+                      </tr>
+                    )}
+                    {g.items.map((p) => {
+                      n += 1;
+                      const num = n;
+                      return (
+                        <tr
+                          key={p.id}
+                          onClick={() => onOpenDeal?.(p.id)}
+                          title={`${p.company} · ${p.name} — ${stageLabel(p.stage)} · clic para abrir`}
+                          className={p.stage === "won" ? "cf-table__row--won" : p.stage === "signing" ? "cf-table__row--firma" : ""}
+                        >
+                          <td className="cf-table__proj" title={`${p.company} · ${p.name}`}>
+                            <span className="cf-num">{num}</span>
+                            {groupBy === "client" ? (
+                              <span className="cf-projname">{p.name}</span>
+                            ) : (
+                              <><b>{p.company}</b> <span className="cf-pn">· {p.name}</span></>
+                            )}
+                          </td>
+                          {p.monthly.map((v, i) => <td key={i} className={heat(v)} title={`Setup ${fmtMoney(p.setup[i], currency)} · SaaS ${fmtMoney(p.saas[i], currency)}`}>{cell(v)}</td>)}
+                          <td className="cf-table__tot">{fmtMoney(p.total, currency)}</td>
+                        </tr>
+                      );
+                    })}
+                  </Fragment>
+                ));
+              })()}
             </tbody>
             <tfoot>
               <tr className="cf-table__sub cf-table__sub--first">
