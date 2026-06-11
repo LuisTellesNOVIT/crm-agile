@@ -511,37 +511,42 @@ function StageFunnelCard({
 }
 
 /* ============================================================
-   LostClientDrawer — sustento del KPI "Cliente top perdido":
-   lista las oportunidades PERDIDAS del cliente; total cuadra.
+   ClientOutcomeDrawer — sustento de los KPI "Cliente top ganado"
+   y "Cliente top perdido": lista las oportunidades ganadas o
+   perdidas del cliente; el total cuadra con el KPI.
    ============================================================ */
-function LostClientDrawer({
+function ClientOutcomeDrawer({
   clientName,
+  mode,
   ws,
   currency,
   onClose,
   onOpenDeal,
 }: {
   clientName: string | null;
+  mode: "won" | "lost";
   ws: { stages: { id: string; label: string; color: string }[]; deals: Deal[] };
   currency: Currency;
   onClose: () => void;
   onOpenDeal: (id: string) => void;
 }) {
   if (!clientName) return null;
-  const deals = ws.deals.filter((d) => d.stage === "lost" && d.company === clientName).sort((a, b) => b.value - a.value);
+  const isWon = mode === "won";
+  const color = isWon ? "var(--success)" : "var(--danger)";
+  const deals = ws.deals.filter((d) => d.stage === mode && d.company === clientName).sort((a, b) => b.value - a.value);
   const total = deals.reduce((a, d) => a + d.value, 0);
   return (
     <div className="drawer-backdrop" onClick={onClose}>
       <aside className="ai-drawer kpi-drawer" style={{ width: "min(560px, 100vw)" }} onClick={(e) => e.stopPropagation()}>
         <header className="ai-drawer__head" style={{ padding: "0 14px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ width: 28, height: 28, borderRadius: 6, background: "var(--danger)", color: "#fff", display: "grid", placeItems: "center" }}>
-              <Icon name="alert" size={14} />
+            <span style={{ width: 28, height: 28, borderRadius: 6, background: color, color: "#fff", display: "grid", placeItems: "center" }}>
+              <Icon name={isWon ? "check" : "alert"} size={14} />
             </span>
             <div>
               <div style={{ fontWeight: 600 }}>{clientName}</div>
               <div style={{ fontSize: 10, color: "var(--fg-3)", fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                Oportunidades perdidas · sustento
+                Oportunidades {isWon ? "ganadas" : "perdidas"} · sustento
               </div>
             </div>
           </div>
@@ -550,9 +555,9 @@ function LostClientDrawer({
 
         <div className="ai-drawer__msgs" style={{ gap: 12, padding: 14 }}>
           <div className="kpi-drawer__headline">
-            <div className="kpi-drawer__head-label">Valor perdido</div>
-            <div className="kpi-drawer__head-value" style={{ color: "var(--danger)" }}>{fmtMoney(total, currency)}</div>
-            <div className="kpi-drawer__head-sub">{deals.length} oportunidad(es) perdida(s) · suma exacta de los valores listados</div>
+            <div className="kpi-drawer__head-label">Valor {isWon ? "ganado" : "perdido"}</div>
+            <div className="kpi-drawer__head-value" style={{ color }}>{fmtMoney(total, currency)}</div>
+            <div className="kpi-drawer__head-sub">{deals.length} oportunidad(es) {isWon ? "ganada(s)" : "perdida(s)"} · suma exacta de los valores listados</div>
           </div>
           <div className="kpi-drawer__list">
             {deals.map((d) => (
@@ -561,10 +566,10 @@ function LostClientDrawer({
                   <div className="kpi-drawer__row-name">{d.name}</div>
                   <div className="kpi-drawer__row-sub"><span className="mono">{d.id}</span> · {d.company}</div>
                 </div>
-                <span className="mono kpi-drawer__row-value" style={{ color: "var(--danger)" }}>{fmtMoney(d.value, currency)}</span>
+                <span className="mono kpi-drawer__row-value" style={{ color }}>{fmtMoney(d.value, currency)}</span>
               </div>
             ))}
-            {deals.length === 0 && <div style={{ padding: 16, textAlign: "center", color: "var(--fg-3)", fontSize: 13 }}>Sin pérdidas</div>}
+            {deals.length === 0 && <div style={{ padding: 16, textAlign: "center", color: "var(--fg-3)", fontSize: 13 }}>{isWon ? "Sin ganados" : "Sin pérdidas"}</div>}
           </div>
         </div>
       </aside>
@@ -1779,6 +1784,7 @@ export default function DashboardRoute() {
   const [ownerDetail, setOwnerDetail] = useState<string | null>(null);
   const [clientDetail, setClientDetail] = useState<string | null>(null);
   const [lostClientDetail, setLostClientDetail] = useState<string | null>(null);
+  const [wonClientDetail, setWonClientDetail] = useState<string | null>(null);
 
   // ---------- métricas base (todas via lib/metrics — fuente única) ----------
   const open = ws.deals.filter((d) => d.stage !== "won" && d.stage !== "lost");
@@ -1820,6 +1826,7 @@ export default function DashboardRoute() {
   const sparkWinRate = trend(winRate, 9, 5.5);
   const sparkConversion = trend(conversionRate, 9, 6.3);
   const sparkLost = trend(lostValue, 12, 7.1, "noisy");
+  const sparkWon = trend(wonValue, 12, 4.2);
   const sparkClients = trend(customers.length, 12, 8.9);
   const sparkOpen = trend(open.length, 12, 9.5);
 
@@ -1861,6 +1868,17 @@ export default function DashboardRoute() {
   const topLostClient =
     [...lostByClient.entries()].map(([name, v]) => ({ name, ...v })).sort((a, b) => b.value - a.value)[0] ?? null;
 
+  // ---------- Cliente con mayor valor en oportunidades ganadas ----------
+  const wonByClient = new Map<string, { value: number; count: number }>();
+  won.forEach((d) => {
+    const cur = wonByClient.get(d.company) ?? { value: 0, count: 0 };
+    cur.value += d.value;
+    cur.count += 1;
+    wonByClient.set(d.company, cur);
+  });
+  const topWonClient =
+    [...wonByClient.entries()].map(([name, v]) => ({ name, ...v })).sort((a, b) => b.value - a.value)[0] ?? null;
+
   return (
     <div className="dash">
       {/* ───── KPI cards ───── */}
@@ -1869,6 +1887,19 @@ export default function DashboardRoute() {
         <Kpi label="Win Rate" value={winRate + "%"} delta="+2.1pp" deltaDir="up" help="Won / (Won + Lost)" formula="Ganados / (Ganados + Perdidos)" purpose="Efectividad de cierre entre los tratos ya decididos (no cuenta los abiertos)." spark={sparkWinRate} onClick={() => setKpiDetail("winrate")} />
         <Kpi label="Tasa de Conversión" value={conversionRate + "%"} delta="+3.2pp" deltaDir="up" help="Lead → Cliente" formula="Ganados / Todos los tratos (incluye abiertos)" purpose="% del embudo total que se vuelve cliente (lead → cliente)." spark={sparkConversion} onClick={() => setKpiDetail("conversion")} />
         <Kpi label="Forecast Perdido" value={fmtMoney(lostValue, currency)} delta={lost.length + " tratos"} deltaDir="down" help="Σ valor de tratos Lost" formula="Σ valor de los tratos en estado Perdido" purpose="Cuánto valor se perdió; dimensiona las fugas del pipeline." spark={sparkLost} sparkColor="var(--danger)" sparkInvert onClick={() => setKpiDetail("lost_forecast")} />
+        <Kpi
+          label="Cliente top ganado"
+          value={topWonClient ? fmtMoney(topWonClient.value, currency) : "—"}
+          valueColor="#16a34a"
+          delta={topWonClient ? (topWonClient.name.length > 20 ? topWonClient.name.slice(0, 19) + "…" : topWonClient.name) : "sin ganados"}
+          deltaDir="up"
+          help={topWonClient ? `Venderle 2× la próxima: ${fmtMoney(topWonClient.value * 2, currency)}` : "Cliente con más valor ganado"}
+          spark={sparkWon}
+          sparkColor="var(--success)"
+          formula="Cliente con mayor Σ valor de tratos ganados"
+          purpose="Identifica tu mejor cuenta: dónde ya entró más plata."
+          onClick={() => { if (topWonClient) setWonClientDetail(topWonClient.name); }}
+        />
         <Kpi
           label="Cliente top perdido"
           value={topLostClient ? fmtMoney(topLostClient.value, currency) : "—"}
@@ -2066,9 +2097,21 @@ export default function DashboardRoute() {
         }}
       />
 
-      {/* ───── Lost Client Drawer (sustento KPI cliente top perdido) ───── */}
-      <LostClientDrawer
+      {/* ───── Sustento KPI cliente top ganado / top perdido ───── */}
+      <ClientOutcomeDrawer
+        clientName={wonClientDetail}
+        mode="won"
+        ws={ws}
+        currency={currency}
+        onClose={() => setWonClientDetail(null)}
+        onOpenDeal={(id) => {
+          setWonClientDetail(null);
+          setSelectedDeal(id);
+        }}
+      />
+      <ClientOutcomeDrawer
         clientName={lostClientDetail}
+        mode="lost"
         ws={ws}
         currency={currency}
         onClose={() => setLostClientDetail(null)}
