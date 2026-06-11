@@ -930,8 +930,8 @@ function DealEditModal({
   // se convierte de vuelta a USD al guardar.
   const displayCurrency = useAppStore((s) => s.currency);
   const [ccy, setCcy] = useState<Currency>(displayCurrency);
-  const r2 = (n: number) => Math.round(n * 100) / 100;
-  const toCcy = (usd: number, c: Currency) => r2(usd * EXCHANGE_RATES[c]);
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  const toCcy = (usd: number, c: Currency) => round2(usd * EXCHANGE_RATES[c]);
 
   // ── Estado del trato ──
   const [name, setName] = useState(deal.name);
@@ -954,7 +954,7 @@ function DealEditModal({
       const n = parseFloat(s);
       if (!Number.isFinite(n)) return s;
       const usd = n / EXCHANGE_RATES[ccy];
-      return String(r2(usd * EXCHANGE_RATES[next]));
+      return String(round2(usd * EXCHANGE_RATES[next]));
     };
     setValue((v) => conv(v));
     setArr((a) => conv(a));
@@ -1063,7 +1063,7 @@ function DealEditModal({
       df.set("id", deal.id);
       df.set("name", name);
       // value/arr se tipean en `ccy` → convertir a USD (lo que guarda la DB)
-      const toUSD = (s: string) => String(r2((parseFloat(s) || 0) / EXCHANGE_RATES[ccy]));
+      const toUSD = (s: string) => String(round2((parseFloat(s) || 0) / EXCHANGE_RATES[ccy]));
       df.set("value", toUSD(value));
       df.set("estimatedCloseAt", closeAt);
       df.set("stage", stage);
@@ -1141,7 +1141,7 @@ function DealEditModal({
                   <input type="number" value={value} onChange={(e) => setValue(e.target.value)} min={0} step="0.01" className="mono" />
                 </div>
                 {ccy === "PEN" ? (
-                  <small>≈ ${r2((parseFloat(value) || 0) / EXCHANGE_RATES.PEN).toLocaleString("en-US")} · TC {EXCHANGE_RATES.PEN} (se guarda en USD)</small>
+                  <small>≈ ${round2((parseFloat(value) || 0) / EXCHANGE_RATES.PEN).toLocaleString("en-US")} · TC {EXCHANGE_RATES.PEN} (se guarda en USD)</small>
                 ) : (
                   <small>Pago único del proyecto.</small>
                 )}
