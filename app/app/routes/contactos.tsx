@@ -1,36 +1,29 @@
 import { useEffect, useMemo, useState } from "react";
 import { useFetcher } from "react-router";
 import { Icon } from "../components/shell/Icon";
+import { Combobox } from "../components/ui/Combobox";
+import { initialsOf, avatarBg } from "../lib/avatar";
 import { useActiveWorkspace } from "../lib/store";
-import type { ContactLite } from "../lib/types";
+import type { CompanyLite, ContactLite } from "../lib/types";
 
 /**
  * Maestro de Contactos — directorio único de personas (deduplicado por la DB),
- * con su cliente asociado. Buscable y agrupable por cliente. Mismo estándar
- * visual que el alta de lead (cards, avatares, mono).
+ * con su cliente asociado. Buscable y agrupable por cliente. Edición inline
+ * estilo HubSpot (panel de registro a la derecha). Mismo estándar visual del
+ * resto del app.
  */
-
-function initialsOf(name: string) {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (!parts.length) return "?";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
-function avatarBg(seed: string) {
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) % 360;
-  return `oklch(64% 0.14 ${h})`;
-}
 
 export default function ContactosPage() {
   const ws = useActiveWorkspace();
   const [q, setQ] = useState("");
   const [grouped, setGrouped] = useState(true);
   const [sel, setSel] = useState<Set<string>>(() => new Set());
+  const [editing, setEditing] = useState<ContactLite | null>(null);
   const fetcher = useFetcher<{ ok?: boolean; deleted?: number; error?: string }>();
   const deleting = fetcher.state !== "idle";
 
   const contacts = ws.contacts ?? [];
+  const companies = ws.companies ?? [];
 
   const toggle = (id: string) =>
     setSel((prev) => {
@@ -169,7 +162,7 @@ export default function ContactosPage() {
               </div>
               <div className="contacts-list">
                 {g.items.map((c) => (
-                  <ContactRow key={c.id} c={c} showClient={false} selected={sel.has(c.id)} onToggle={() => toggle(c.id)} />
+                  <ContactRow key={c.id} c={c} showClient={false} selected={sel.has(c.id)} onToggle={() => toggle(c.id)} onEdit={() => setEditing(c)} />
                 ))}
               </div>
             </section>
@@ -179,10 +172,19 @@ export default function ContactosPage() {
         <section className="contacts-card">
           <div className="contacts-list contacts-list--flat">
             {filtered.map((c) => (
-              <ContactRow key={c.id} c={c} showClient selected={sel.has(c.id)} onToggle={() => toggle(c.id)} />
+              <ContactRow key={c.id} c={c} showClient selected={sel.has(c.id)} onToggle={() => toggle(c.id)} onEdit={() => setEditing(c)} />
             ))}
           </div>
         </section>
+      )}
+
+      {editing && (
+        <ContactEditPanel
+          key={editing.id}
+          contact={editing}
+          companies={companies}
+          onClose={() => setEditing(null)}
+        />
       )}
 
       <style>{`
@@ -216,13 +218,16 @@ export default function ContactosPage() {
         .contacts-card__count { margin-left: auto; font-size: 11px; color: var(--fg-4); font-family: var(--font-mono); }
 
         .contacts-list { display: flex; flex-direction: column; }
-        .contact-row { display: grid; grid-template-columns: 26px 34px 1.4fr 1.6fr 1fr; gap: 12px; align-items: center; padding: 9px 14px; border-bottom: 1px solid var(--border-2); }
-        .contacts-list--flat .contact-row { grid-template-columns: 26px 34px 1.3fr 1.5fr 1fr 1.1fr; }
+        .contact-row { display: grid; grid-template-columns: 26px 34px 1.4fr 1.6fr 1fr 30px; gap: 12px; align-items: center; padding: 9px 14px; border-bottom: 1px solid var(--border-2); cursor: pointer; }
+        .contacts-list--flat .contact-row { grid-template-columns: 26px 34px 1.3fr 1.5fr 1fr 1.1fr 30px; }
         .contact-row:last-child { border-bottom: 0; }
         .contact-row:hover { background: var(--bg-2); }
         .contact-row.is-selected { background: color-mix(in srgb, var(--accent) 8%, transparent); }
         .contact-row__check { display: flex; align-items: center; justify-content: center; }
         .contact-row__check input { width: 15px; height: 15px; cursor: pointer; accent-color: var(--accent); }
+        .contact-row__edit { border: 1px solid transparent; background: transparent; color: var(--fg-4); border-radius: 7px; width: 28px; height: 28px; display: grid; place-items: center; cursor: pointer; opacity: 0; transition: opacity .12s, border-color .12s, color .12s; }
+        .contact-row:hover .contact-row__edit { opacity: 1; }
+        .contact-row__edit:hover { border-color: var(--border); color: var(--accent); background: var(--bg); }
 
         .contacts-selbar { display: flex; align-items: center; gap: 14px; padding: 8px 13px; border: 1px solid var(--border-2); border-radius: 10px; background: var(--bg); }
         .contacts-selbar.is-active { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); background: color-mix(in srgb, var(--accent) 5%, var(--bg)); }
@@ -242,6 +247,25 @@ export default function ContactosPage() {
         .contact-row__cell a:hover { color: var(--accent); text-decoration: underline; }
         .contact-row__client { font-size: 12px; color: var(--fg-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .contact-row__ic { color: var(--fg-4); flex-shrink: 0; }
+
+        /* Panel de edición (estilo HubSpot record) */
+        .ct-panel { display: flex; flex-direction: column; padding: 0; }
+        .ct-panel__head { display: flex; align-items: center; gap: 12px; padding: 16px; border-bottom: 1px solid var(--border-2); flex: 0 0 auto; }
+        .ct-panel__av { width: 42px; height: 42px; border-radius: 50%; color: #fff; display: grid; place-items: center; font-size: 14px; font-weight: 700; font-family: var(--font-mono); flex-shrink: 0; }
+        .ct-panel__id { min-width: 0; flex: 1; }
+        .ct-panel__name { font-weight: 650; font-size: 16px; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .ct-panel__sub { font-size: 12px; color: var(--fg-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+        .ct-panel__body { flex: 1 1 auto; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 13px; }
+        .ct-panel__section-lbl { font-size: 10.5px; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: .07em; color: var(--fg-4); }
+        .ct-field { display: flex; flex-direction: column; gap: 5px; }
+        .ct-field > span { font-size: 11.5px; color: var(--fg-3); font-weight: 600; }
+        .ct-field > span .req { color: var(--accent); font-style: normal; }
+        .ct-field input { padding: 9px 11px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg); color: var(--fg); font: inherit; font-size: 13.5px; outline: none; transition: border-color .12s, box-shadow .12s; }
+        .ct-field input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(99,102,241,.12); }
+        .ct-field input.is-invalid { border-color: var(--danger); }
+        .ct-err { font-size: 10.5px; color: var(--danger); font-weight: 500; }
+        .ct-errbox { font-size: 12px; color: var(--danger); background: oklch(58% 0.22 25 / .08); border: 1px solid oklch(58% 0.22 25 / .25); border-radius: 9px; padding: 9px 11px; }
+        .ct-panel__foot { flex: 0 0 auto; display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border-2); background: var(--bg); }
       `}</style>
     </div>
   );
@@ -252,14 +276,20 @@ function ContactRow({
   showClient,
   selected,
   onToggle,
+  onEdit,
 }: {
   c: ContactLite;
   showClient: boolean;
   selected: boolean;
   onToggle: () => void;
+  onEdit: () => void;
 }) {
   return (
-    <div className={`contact-row ${selected ? "is-selected" : ""}`.trim()}>
+    <div
+      className={`contact-row ${selected ? "is-selected" : ""}`.trim()}
+      onClick={onEdit}
+      title="Editar contacto"
+    >
       <label className="contact-row__check" onClick={(e) => e.stopPropagation()}>
         <input type="checkbox" checked={selected} onChange={onToggle} aria-label={`Seleccionar ${c.name}`} />
       </label>
@@ -287,6 +317,116 @@ function ContactRow({
       {showClient && (
         <span className="contact-row__client" title={c.companyName}>{c.companyName}</span>
       )}
+      <button
+        type="button"
+        className="contact-row__edit"
+        onClick={(e) => { e.stopPropagation(); onEdit(); }}
+        title="Editar contacto"
+        aria-label={`Editar ${c.name}`}
+      >
+        <Icon name="settings" size={13} />
+      </button>
+    </div>
+  );
+}
+
+/* ── Panel de edición de contacto (estilo HubSpot: record panel) ── */
+function ContactEditPanel({
+  contact,
+  companies,
+  onClose,
+}: {
+  contact: ContactLite;
+  companies: CompanyLite[];
+  onClose: () => void;
+}) {
+  const fetcher = useFetcher<{ ok?: boolean; error?: string }>();
+  const saving = fetcher.state !== "idle";
+  const [name, setName] = useState(contact.name);
+  const [role, setRole] = useState(contact.role ?? "");
+  const [email, setEmail] = useState(contact.email ?? "");
+  const [phone, setPhone] = useState(contact.phone ?? "");
+  const [companyId, setCompanyId] = useState(contact.companyId);
+
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data?.ok) onClose();
+  }, [fetcher.state, fetcher.data, onClose]);
+
+  const emailValid = !email.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const dirty =
+    name !== contact.name ||
+    role !== (contact.role ?? "") ||
+    email !== (contact.email ?? "") ||
+    phone !== (contact.phone ?? "") ||
+    companyId !== contact.companyId;
+  const canSave = name.trim().length > 0 && emailValid && dirty && !saving;
+
+  const onSave = () => {
+    if (!canSave) return;
+    fetcher.submit(
+      { id: contact.id, name, role, email, phone, companyId },
+      { method: "POST", action: "/api/contact-update" },
+    );
+  };
+
+  const coOptions = [...companies]
+    .sort((a, b) => a.name.localeCompare(b.name, "es"))
+    .map((c) => ({ value: c.id, label: c.name, sublabel: c.ruc ? `RUC ${c.ruc}` : c.industry ?? undefined }));
+  const currentCo = companies.find((c) => c.id === companyId)?.name ?? contact.companyName;
+
+  return (
+    <div className="drawer-backdrop" onClick={onClose}>
+      <aside className="ai-drawer ct-panel" style={{ width: "min(440px, 100vw)" }} onClick={(e) => e.stopPropagation()}>
+        <header className="ct-panel__head">
+          <span className="ct-panel__av" style={{ background: avatarBg(name || contact.name) }}>{initialsOf(name || contact.name)}</span>
+          <div className="ct-panel__id">
+            <div className="ct-panel__name">{name.trim() || "Contacto"}</div>
+            <div className="ct-panel__sub">{(role.trim() || "Sin cargo") + " · " + currentCo}</div>
+          </div>
+          <button type="button" className="btn btn--icon" onClick={onClose} aria-label="Cerrar"><Icon name="x" size={14} /></button>
+        </header>
+
+        <div className="ct-panel__body">
+          <div className="ct-panel__section-lbl">Datos del contacto</div>
+
+          <label className="ct-field">
+            <span>Nombre <i className="req">*</i></span>
+            <input type="text" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+          </label>
+          <label className="ct-field">
+            <span>Cargo</span>
+            <input type="text" value={role} onChange={(e) => setRole(e.target.value)} placeholder="Gerente comercial…" />
+          </label>
+          <label className="ct-field">
+            <span>Email</span>
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="persona@empresa.com" className={email.trim() && !emailValid ? "is-invalid" : ""} />
+            {email.trim() && !emailValid && <small className="ct-err">Email inválido.</small>}
+          </label>
+          <label className="ct-field">
+            <span>Teléfono</span>
+            <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+51 999 999 999" />
+          </label>
+          <label className="ct-field">
+            <span>Cliente</span>
+            <Combobox
+              value={companyId}
+              options={coOptions}
+              onSelect={setCompanyId}
+              placeholder="Elegí un cliente…"
+              searchPlaceholder="Buscar cliente…"
+            />
+          </label>
+
+          {fetcher.data?.error && <div className="ct-errbox" role="alert">⚠ {fetcher.data.error}</div>}
+        </div>
+
+        <footer className="ct-panel__foot">
+          <button type="button" className="btn" onClick={onClose} disabled={saving}>Cancelar</button>
+          <button type="button" className="btn btn--primary" onClick={onSave} disabled={!canSave}>
+            {saving ? "Guardando…" : "Guardar cambios"}
+          </button>
+        </footer>
+      </aside>
     </div>
   );
 }
