@@ -4,7 +4,8 @@ import { Icon } from "../shell/Icon";
 import { Chip } from "../ui/Chip";
 import { Combobox, type ComboOption } from "../ui/Combobox";
 import { initialsOf, avatarBg } from "../../lib/avatar";
-import { useActiveWorkspace, useCurrentUser, useWorkspaceLoaderData, useAppStore } from "../../lib/store";
+import { useActiveWorkspace, useCurrentUser, useWorkspaceLoaderData, useAppStore, type Currency } from "../../lib/store";
+import { EXCHANGE_RATES } from "../../lib/format";
 import { TagsEditor } from "../ui/TagsEditor";
 
 /**
@@ -19,6 +20,35 @@ import { TagsEditor } from "../ui/TagsEditor";
 const NEW = "__new__"; // valor centinela = "crear nuevo" en los comboboxes de maestro
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// Códigos de país para el celular (Perú primero como default).
+const PHONE_CC = [
+  { cc: "+51", flag: "🇵🇪", name: "Perú", max: 9 },
+  { cc: "+54", flag: "🇦🇷", name: "Argentina", max: 11 },
+  { cc: "+591", flag: "🇧🇴", name: "Bolivia", max: 8 },
+  { cc: "+55", flag: "🇧🇷", name: "Brasil", max: 11 },
+  { cc: "+56", flag: "🇨🇱", name: "Chile", max: 9 },
+  { cc: "+57", flag: "🇨🇴", name: "Colombia", max: 10 },
+  { cc: "+593", flag: "🇪🇨", name: "Ecuador", max: 9 },
+  { cc: "+34", flag: "🇪🇸", name: "España", max: 9 },
+  { cc: "+1", flag: "🇺🇸", name: "EE.UU. / Canadá", max: 10 },
+  { cc: "+52", flag: "🇲🇽", name: "México", max: 10 },
+  { cc: "+507", flag: "🇵🇦", name: "Panamá", max: 8 },
+  { cc: "+595", flag: "🇵🇾", name: "Paraguay", max: 9 },
+  { cc: "+598", flag: "🇺🇾", name: "Uruguay", max: 9 },
+  { cc: "+58", flag: "🇻🇪", name: "Venezuela", max: 10 },
+];
+
+/** Separa un teléfono guardado ("+51999…") en código de país + número local. */
+function splitPhone(stored: string, fallback: { phoneCC: string; phoneLocal: string }) {
+  const raw = stored.trim();
+  if (!raw) return { phoneCC: fallback.phoneCC, phoneLocal: fallback.phoneLocal };
+  const normalized = raw.startsWith("+") ? raw : `+${raw.replace(/\D/g, "")}`;
+  // match por prefijo más largo (evita que +51 capture un +511… de otro país)
+  const hit = [...PHONE_CC].sort((a, b) => b.cc.length - a.cc.length).find((p) => normalized.startsWith(p.cc));
+  if (hit) return { phoneCC: hit.cc, phoneLocal: normalized.slice(hit.cc.length).replace(/\D/g, "").slice(0, hit.max) };
+  return { phoneCC: fallback.phoneCC, phoneLocal: normalized.replace(/\D/g, "").slice(0, 12) };
+}
+
 type FormState = {
   // Cliente (maestro): companyId real | NEW
   companyId: string;
@@ -30,10 +60,12 @@ type FormState = {
   firstName: string;
   lastName: string;
   email: string;
-  phoneLocal: string; // sólo el número local (sin +51)
+  phoneCC: string; // código de país del celular (+51 default)
+  phoneLocal: string; // sólo el número local (sin código de país)
   // Oportunidad
   source: string;
   estimatedValue: string;
+  valueCurrency: Currency; // moneda en la que el usuario tipea el valor
   dealName: string;
   stage: string;
   sequence: string;
@@ -49,9 +81,11 @@ const INITIAL: FormState = {
   firstName: "",
   lastName: "",
   email: "",
+  phoneCC: "+51",
   phoneLocal: "",
   source: "",
   estimatedValue: "",
+  valueCurrency: "USD",
   dealName: "",
   stage: "",
   sequence: "",
@@ -60,7 +94,10 @@ const INITIAL: FormState = {
 
 type ActionResult = { ok?: boolean; error?: string; dealId?: string; dealName?: string; company?: string; message?: string };
 
-const USD0 = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+const FMT0: Record<Currency, Intl.NumberFormat> = {
+  USD: new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }),
+  PEN: new Intl.NumberFormat("es-PE", { style: "currency", currency: "PEN", maximumFractionDigits: 0 }),
+};
 
 // ── Etapa como pills ─────────────────────────────────────
 function StagePills({
@@ -104,7 +141,9 @@ export function NewLeadDrawer({ onClose }: { onClose: () => void }) {
   const currentUser = useCurrentUser();
   const fetcher = useFetcher<ActionResult>();
   const presetStage = useAppStore((s) => s.ui.newLeadStage);
-  const [form, setForm] = useState<FormState>(() => ({ ...INITIAL, stage: presetStage ?? "" }));
+  const displayCurrency = useAppStore((s) => s.currency);
+  // Default de moneda = el filtro de moneda activo (USD/PEN del topbar).
+  const [form, setForm] = useState<FormState>(() => ({ ...INITIAL, stage: presetStage ?? "", valueCurrency: displayCurrency }));
   const [tags, setTags] = useState<string[]>([]);
   const formRef = useRef<HTMLFormElement>(null);
   const update = (patch: Partial<FormState>) => setForm((f) => ({ ...f, ...patch }));
@@ -171,7 +210,7 @@ export function NewLeadDrawer({ onClose }: { onClose: () => void }) {
       firstName: c?.name ?? f.firstName,
       lastName: "",
       email: c?.email ?? f.email,
-      phoneLocal: (c?.phone ?? "").replace(/^\+?51/, "").replace(/\D/g, "").slice(0, 9) || f.phoneLocal,
+      ...splitPhone(c?.phone ?? "", f),
     }));
   };
 
@@ -196,19 +235,23 @@ export function NewLeadDrawer({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     if (result?.ok) {
       const t = window.setTimeout(() => {
-        setForm(INITIAL);
+        setForm({ ...INITIAL, valueCurrency: displayCurrency });
         setTags([]);
         onClose();
       }, 1500);
       return () => window.clearTimeout(t);
     }
-  }, [result, onClose]);
+  }, [result, onClose, displayCurrency]);
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!canSubmit) return;
     const phoneClean = form.phoneLocal.replace(/\D/g, "");
-    const phoneFull = phoneClean ? `+51${phoneClean}` : "";
+    const phoneFull = phoneClean ? `${form.phoneCC}${phoneClean}` : "";
+    // El valor se guarda SIEMPRE en USD (la vista convierte al mostrar).
+    // Si el usuario tipeó en soles, lo convertimos con el tipo de cambio.
+    const typed = parseFloat(form.estimatedValue || "0") || 0;
+    const valueUSD = form.valueCurrency === "PEN" ? typed / EXCHANGE_RATES.PEN : typed;
 
     fetcher.submit(
       {
@@ -223,7 +266,7 @@ export function NewLeadDrawer({ onClose }: { onClose: () => void }) {
         email: isNewContact ? form.email : "",
         phone: isNewContact ? phoneFull : "",
         source: form.source,
-        estimatedValue: form.estimatedValue || "0",
+        estimatedValue: String(valueUSD),
         stage: effectiveStage,
         dealName: form.dealName,
         tags: tags.join(","),
@@ -420,19 +463,36 @@ export function NewLeadDrawer({ onClose }: { onClose: () => void }) {
                   <label className="lead-field">
                     <span className="lead-field__lbl">WhatsApp / Celular</span>
                     <div className="lead-phone">
-                      <span className="lead-phone__prefix" aria-label="Perú">
-                        <span className="lead-phone__flag" aria-hidden="true">🇵🇪</span>
-                        <span className="mono">+51</span>
-                      </span>
+                      <select
+                        className="lead-phone__cc"
+                        value={form.phoneCC}
+                        onChange={(e) => {
+                          const cc = e.target.value;
+                          const max = PHONE_CC.find((p) => p.cc === cc)?.max ?? 12;
+                          update({ phoneCC: cc, phoneLocal: form.phoneLocal.slice(0, max) });
+                        }}
+                        aria-label="Código de país"
+                        title="Código de país del celular"
+                      >
+                        {PHONE_CC.map((p) => (
+                          <option key={p.cc} value={p.cc}>{p.flag} {p.cc}</option>
+                        ))}
+                      </select>
                       <input
                         type="tel"
                         inputMode="numeric"
                         value={form.phoneLocal}
-                        onChange={(e) => update({ phoneLocal: e.target.value.replace(/\D/g, "").slice(0, 9) })}
+                        onChange={(e) => {
+                          const max = PHONE_CC.find((p) => p.cc === form.phoneCC)?.max ?? 12;
+                          update({ phoneLocal: e.target.value.replace(/\D/g, "").slice(0, max) });
+                        }}
                         placeholder="999 999 999"
-                        maxLength={9}
+                        maxLength={PHONE_CC.find((p) => p.cc === form.phoneCC)?.max ?? 12}
                       />
                     </div>
+                    <small className="lead-field__help">
+                      {PHONE_CC.find((p) => p.cc === form.phoneCC)?.name ?? ""} · el código {form.phoneCC} se agrega automáticamente.
+                    </small>
                   </label>
                 </>
               ) : (
@@ -485,7 +545,16 @@ export function NewLeadDrawer({ onClose }: { onClose: () => void }) {
                 <label className="lead-field" style={{ flex: 1 }}>
                   <span className="lead-field__lbl">Valor estimado</span>
                   <div className="lead-money">
-                    <span className="lead-money__cur">USD&nbsp;$</span>
+                    <select
+                      className="lead-money__ccy"
+                      value={form.valueCurrency}
+                      onChange={(e) => update({ valueCurrency: e.target.value as Currency })}
+                      aria-label="Moneda del valor"
+                      title="Moneda en la que estás tipeando el valor"
+                    >
+                      <option value="USD">USD $</option>
+                      <option value="PEN">PEN S/</option>
+                    </select>
                     <input
                       type="number"
                       inputMode="decimal"
@@ -497,6 +566,11 @@ export function NewLeadDrawer({ onClose }: { onClose: () => void }) {
                       placeholder="50000"
                     />
                   </div>
+                  {form.valueCurrency === "PEN" && valueNum > 0 && (
+                    <small className="lead-field__help">
+                      ≈ {FMT0.USD.format(valueNum / EXCHANGE_RATES.PEN)} · TC {EXCHANGE_RATES.PEN} (se guarda en USD)
+                    </small>
+                  )}
                 </label>
                 <label className="lead-field" style={{ flex: 1 }}>
                   <span className="lead-field__lbl">Canal de origen</span>
@@ -553,7 +627,7 @@ export function NewLeadDrawer({ onClose }: { onClose: () => void }) {
                 <span className="lead-preview__name">{dealPreview}</span>
                 <span className="lead-preview__meta">
                   {stageObj?.label ?? "—"}
-                  {valueNum > 0 ? ` · ${USD0.format(valueNum)}` : ""}
+                  {valueNum > 0 ? ` · ${FMT0[form.valueCurrency].format(valueNum)}` : ""}
                   {form.strategic ? " · ★" : ""}
                 </span>
               </div>
@@ -650,11 +724,21 @@ export function NewLeadDrawer({ onClose }: { onClose: () => void }) {
           .lead-phone__prefix { display: inline-flex; align-items: center; gap: 6px; padding: 0 11px; background: var(--bg-2); border-right: 1px solid var(--border); font-size: 13px; font-weight: 500; user-select: none; white-space: nowrap; }
           .lead-phone__flag { font-size: 16px; line-height: 1; }
           .lead-phone input { flex: 1; border: none !important; outline: none !important; box-shadow: none !important; padding: 9px 11px; font: inherit; font-size: 13.5px; background: transparent; color: var(--fg); }
+          .lead-phone__cc {
+            border: none; outline: none; cursor: pointer; appearance: auto;
+            padding: 0 6px 0 11px; background: var(--bg-2); border-right: 1px solid var(--border);
+            font: inherit; font-size: 13px; font-weight: 500; color: var(--fg); max-width: 110px;
+          }
 
           /* Money */
           .lead-money { display: flex; align-items: stretch; border: 1px solid var(--border); border-radius: 9px; background: var(--bg); overflow: hidden; }
           .lead-money:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(99,102,241,.12); }
           .lead-money__cur { display: inline-flex; align-items: center; padding: 0 10px; background: var(--bg-2); border-right: 1px solid var(--border); font-size: 11.5px; font-weight: 600; color: var(--fg-3); white-space: nowrap; }
+          .lead-money__ccy {
+            border: none; outline: none; cursor: pointer; appearance: auto;
+            padding: 0 4px 0 10px; background: var(--bg-2); border-right: 1px solid var(--border);
+            font: inherit; font-size: 11.5px; font-weight: 600; color: var(--fg-2); max-width: 96px;
+          }
           .lead-money input { flex: 1; border: none !important; outline: none !important; box-shadow: none !important; padding: 9px 11px; font: inherit; font-size: 13.5px; background: transparent; color: var(--fg); width: 100%; }
 
           /* Stage pills */
