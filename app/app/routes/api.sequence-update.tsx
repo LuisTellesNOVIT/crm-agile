@@ -1,6 +1,7 @@
 import type { ActionFunctionArgs } from "react-router";
 import { prisma } from "../lib/db.server";
 import { requireUser } from "../lib/session.server";
+import { hasWorkspaceAccess, forbidden } from "../lib/authz.server";
 
 /**
  * POST /api/sequence-update — guarda una secuencia (nodos + active + name) y,
@@ -14,13 +15,16 @@ import { requireUser } from "../lib/session.server";
  *   templates  JSON [{ name, body }]  (actualiza Template.body por nombre)
  */
 export async function action({ request }: ActionFunctionArgs) {
-  await requireUser(request);
+  const me = await requireUser(request);
   const fd = await request.formData();
   const id = String(fd.get("id") ?? "");
   if (!id) return Response.json({ error: "missing id" }, { status: 400 });
 
   const seq = await prisma.sequence.findUnique({ where: { id }, select: { id: true, workspaceId: true } });
   if (!seq) return Response.json({ error: "sequence not found" }, { status: 404 });
+  if (!hasWorkspaceAccess(me, seq.workspaceId)) {
+    return forbidden("Solo un admin puede editar secuencias de otro grupo.");
+  }
 
   const data: Record<string, unknown> = {};
   const nodesRaw = fd.get("nodes");

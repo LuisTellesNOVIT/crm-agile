@@ -134,7 +134,7 @@ export async function action({ request }: ActionFunctionArgs): Promise<Response>
     if (password.length < 6) {
       return Response.json({ error: "La contraseña debe tener al menos 6 caracteres.", action: intent } satisfies ActionResult, { status: 400 });
     }
-    const passwordHash = await bcrypt.hash(password, 10);
+    const passwordHash = await bcrypt.hash(password, 12);
     await prisma.user.update({
       where: { id: userId },
       data: { passwordHash },
@@ -170,7 +170,7 @@ export async function action({ request }: ActionFunctionArgs): Promise<Response>
       return Response.json({ error: `Workspace no encontrado: ${workspaceSlug}`, action: intent } satisfies ActionResult, { status: 400 });
     }
 
-    const passwordHash = await bcrypt.hash(password, 10);
+    const passwordHash = await bcrypt.hash(password, 12);
     await prisma.user.create({
       data: {
         email,

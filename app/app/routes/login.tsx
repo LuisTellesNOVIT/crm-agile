@@ -11,6 +11,7 @@ import {
 import bcrypt from "bcryptjs";
 import { commitSession, getCurrentUser, getSession } from "../lib/session.server";
 import { prisma } from "../lib/db.server";
+import { clientIp, clearFailures, recordFailure, retryAfterSeconds } from "../lib/rate-limit.server";
 import {
   Annotations,
   BrandMark,
@@ -34,6 +35,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
   return null;
 }
 
+// Rate limit: 5 intentos fallidos por email+IP cada 15 minutos.
+const LOGIN_MAX_FAILS = 5;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+
 export async function action({ request }: ActionFunctionArgs) {
   const fd = await request.formData();
   const email = String(fd.get("email") ?? "").toLowerCase().trim();
@@ -44,19 +49,32 @@ export async function action({ request }: ActionFunctionArgs) {
     return Response.json({ error: "Ingresá email y contraseña." }, { status: 400 });
   }
 
+  const rlKey = `login:${email}:${clientIp(request)}`;
+  const wait = retryAfterSeconds(rlKey, LOGIN_MAX_FAILS, LOGIN_WINDOW_MS);
+  if (wait > 0) {
+    return Response.json(
+      { error: `Demasiados intentos fallidos. Probá de nuevo en ${Math.ceil(wait / 60)} min.` },
+      { status: 429, headers: { "Retry-After": String(wait) } },
+    );
+  }
+
+  // Respuesta y delay idénticos exista o no el email (evita enumeración de usuarios).
+  const fail = async () => {
+    recordFailure(rlKey);
+    await new Promise((r) => setTimeout(r, 400));
+    return Response.json({ error: "Credenciales inválidas." }, { status: 401 });
+  };
+
   const user = await prisma.user.findFirst({
     where: { email: { equals: email, mode: "insensitive" } },
     select: { id: true, passwordHash: true },
   });
 
-  if (!user || !user.passwordHash) {
-    return Response.json({ error: "Credenciales inválidas." }, { status: 401 });
-  }
+  if (!user || !user.passwordHash) return fail();
   const ok = await bcrypt.compare(password, user.passwordHash);
-  if (!ok) {
-    return Response.json({ error: "Credenciales inválidas." }, { status: 401 });
-  }
+  if (!ok) return fail();
 
+  clearFailures(rlKey);
   const session = await getSession(request);
   session.set("userId", user.id);
   return redirect(next || "/", {

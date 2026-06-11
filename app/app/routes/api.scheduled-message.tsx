@@ -1,9 +1,13 @@
 import type { ActionFunctionArgs } from "react-router";
 import { prisma } from "../lib/db.server";
 import { requireUser } from "../lib/session.server";
+import { isAdmin, forbidden } from "../lib/authz.server";
 
 /**
  * POST /api/scheduled-message — CRUD + toggle + "enviar ahora" de programaciones.
+ *
+ * Guard: SOLO admin — las programaciones (briefs a Gerencia, mensajes a
+ * clientes) son globales, no tienen workspace; cualquier cambio afecta a todos.
  *
  * FormData:
  *   op  "toggle" | "runNow" | "save" | "delete"
@@ -16,7 +20,10 @@ function intOr(v: FormDataEntryValue | null, def: number): number {
 }
 
 export async function action({ request }: ActionFunctionArgs) {
-  await requireUser(request);
+  const me = await requireUser(request);
+  if (!isAdmin(me)) {
+    return forbidden("Solo administradores pueden gestionar programaciones.");
+  }
   const fd = await request.formData();
   const op = String(fd.get("op") ?? "");
   const id = String(fd.get("id") ?? "");

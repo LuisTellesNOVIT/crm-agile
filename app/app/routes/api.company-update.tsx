@@ -1,6 +1,7 @@
 import type { ActionFunctionArgs } from "react-router";
 import { prisma } from "../lib/db.server";
 import { requireUser } from "../lib/session.server";
+import { hasWorkspaceAccess, forbidden } from "../lib/authz.server";
 
 /**
  * Resource route — POST /api/company-update
@@ -42,7 +43,7 @@ const TEXT_FIELDS = [
 ] as const;
 
 export async function action({ request }: ActionFunctionArgs) {
-  await requireUser(request);
+  const me = await requireUser(request);
   const fd = await request.formData();
   const companyId = String(fd.get("companyId") ?? "");
   if (!companyId) {
@@ -51,10 +52,13 @@ export async function action({ request }: ActionFunctionArgs) {
 
   const existing = await prisma.company.findUnique({
     where: { id: companyId },
-    select: { id: true },
+    select: { id: true, workspaceId: true },
   });
   if (!existing) {
     return Response.json({ error: "Empresa no encontrada" }, { status: 404 });
+  }
+  if (!hasWorkspaceAccess(me, existing.workspaceId)) {
+    return forbidden("Solo un admin puede editar empresas de otro grupo.");
   }
 
   const data: Record<string, unknown> = {};

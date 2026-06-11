@@ -10,6 +10,7 @@
 import { type ActionFunctionArgs } from "react-router";
 import { prisma } from "../lib/db.server";
 import { requireUser } from "../lib/session.server";
+import { hasWorkspaceAccess, forbidden } from "../lib/authz.server";
 
 type IncomingStage = {
   id?: string;
@@ -27,7 +28,7 @@ export async function action({ request }: ActionFunctionArgs) {
   if (request.method !== "POST") {
     return Response.json({ error: "Method not allowed" }, { status: 405 });
   }
-  await requireUser(request);
+  const me = await requireUser(request);
 
   const body = await request.json().catch(() => null) as
     | { workspaceSlug?: string; stages?: IncomingStage[] }
@@ -42,6 +43,9 @@ export async function action({ request }: ActionFunctionArgs) {
     select: { id: true },
   });
   if (!ws) return Response.json({ error: "Workspace not found" }, { status: 404 });
+  if (!hasWorkspaceAccess(me, ws.id)) {
+    return forbidden("Solo un admin puede editar etapas de otro grupo.");
+  }
 
   const keep = body.stages.filter((s) => !s._delete);
   const remove = body.stages.filter((s) => s._delete);

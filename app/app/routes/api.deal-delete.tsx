@@ -1,6 +1,7 @@
 import type { ActionFunctionArgs } from "react-router";
 import { prisma } from "../lib/db.server";
 import { requireUser } from "../lib/session.server";
+import { hasWorkspaceAccess, forbidden } from "../lib/authz.server";
 
 /**
  * Resource route — POST /api/deal-delete
@@ -9,12 +10,11 @@ import { requireUser } from "../lib/session.server";
  *
  * NO borra la Company ni los Contacts — pueden tener otros deals.
  *
- * Guard: requiere sesión. Sólo borra deals del workspace del usuario
- * (o cualquiera si es admin — acá permitimos borrar cualquiera con sesión
- * válida; el deal se identifica por publicId único global).
+ * Guard: sesión + el deal debe ser del workspace del usuario (admin puede
+ * borrar de cualquier grupo).
  */
 export async function action({ request }: ActionFunctionArgs) {
-  await requireUser(request);
+  const me = await requireUser(request);
   const form = await request.formData();
   const publicId = String(form.get("id") ?? "");
 
@@ -24,10 +24,13 @@ export async function action({ request }: ActionFunctionArgs) {
 
   const existing = await prisma.deal.findUnique({
     where: { publicId },
-    select: { id: true, name: true },
+    select: { id: true, name: true, workspaceId: true },
   });
   if (!existing) {
     return Response.json({ error: `Trato no encontrado: ${publicId}` }, { status: 404 });
+  }
+  if (!hasWorkspaceAccess(me, existing.workspaceId)) {
+    return forbidden("Solo un admin puede eliminar tratos de otro grupo.");
   }
 
   // El cascade del schema borra Activity / File / Conversation / Message.

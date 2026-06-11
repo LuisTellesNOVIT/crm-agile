@@ -2,6 +2,7 @@ import type { ActionFunctionArgs } from "react-router";
 import { prisma } from "../lib/db.server";
 import { parseTags } from "../lib/tags";
 import { requireUser } from "../lib/session.server";
+import { hasWorkspaceAccess, forbidden } from "../lib/authz.server";
 
 /**
  * Resource route — POST /api/lead-create
@@ -75,6 +76,9 @@ export async function action({ request }: ActionFunctionArgs) {
   });
   if (!ws) {
     return Response.json({ error: `Workspace no encontrado: ${workspaceSlug}` }, { status: 400 });
+  }
+  if (!hasWorkspaceAccess(me, ws.id)) {
+    return forbidden("Solo un admin puede crear leads en otro grupo.");
   }
 
   // ── Secuencia de seguimiento (opcional) — debe ser del mismo grupo ──

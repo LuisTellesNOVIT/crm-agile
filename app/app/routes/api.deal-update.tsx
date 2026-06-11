@@ -3,6 +3,7 @@ import { prisma } from "../lib/db.server";
 import { stageProbability } from "../lib/stages";
 import { parseTags } from "../lib/tags";
 import { requireUser } from "../lib/session.server";
+import { hasWorkspaceAccess, forbidden } from "../lib/authz.server";
 
 /**
  * Resource route — POST /api/deal-update
@@ -47,6 +48,9 @@ export async function action({ request }: ActionFunctionArgs) {
   });
   if (!existing) {
     return Response.json({ error: `deal not found: ${publicId}` }, { status: 404 });
+  }
+  if (!hasWorkspaceAccess(me, existing.workspaceId)) {
+    return forbidden("Solo un admin puede editar tratos de otro grupo.");
   }
 
   const data: Record<string, unknown> = {};
