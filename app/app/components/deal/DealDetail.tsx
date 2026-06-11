@@ -1114,7 +1114,7 @@ function DealEditModal({
             <StageChips stages={stages} currentId={stage} onChange={setStage} />
           </div>
 
-          {/* ─── Datos comerciales ─── */}
+          {/* ─── Datos comerciales: identidad → dinero (Valor + SaaS juntos) → prioridad ─── */}
           <div className="deal-edit-modal__section">
             <h3><Icon name="dollar" size={12} /> Datos comerciales</h3>
             <div className="deal-edit-modal__row">
@@ -1129,6 +1129,7 @@ function DealEditModal({
               </label>
             </div>
 
+            {/* Dinero: Valor (setup) y SaaS uno al lado del otro, misma moneda */}
             <div className="deal-edit-modal__row">
               <label className="deal-edit-modal__field" style={{ flex: 1 }}>
                 <span>Valor (setup)</span>
@@ -1139,34 +1140,66 @@ function DealEditModal({
                   </select>
                   <input type="number" value={value} onChange={(e) => setValue(e.target.value)} min={0} step="0.01" className="mono" />
                 </div>
-                {ccy === "PEN" && (
+                {ccy === "PEN" ? (
                   <small>≈ ${r2((parseFloat(value) || 0) / EXCHANGE_RATES.PEN).toLocaleString("en-US")} · TC {EXCHANGE_RATES.PEN} (se guarda en USD)</small>
+                ) : (
+                  <small>Pago único del proyecto.</small>
                 )}
               </label>
+              <label className="deal-edit-modal__field" style={{ flex: 1 }}>
+                <span>SaaS · ARR (anual)</span>
+                <div className={`money-wrap ${!isRecurring ? "is-disabled" : ""}`.trim()}>
+                  <span className="money-wrap__cur">{ccy === "PEN" ? "S/" : "$"}</span>
+                  <input
+                    type="number"
+                    value={arr}
+                    onChange={(e) => setArr(e.target.value)}
+                    min={0}
+                    step="0.01"
+                    className="mono"
+                    disabled={!isRecurring}
+                    placeholder={isRecurring ? "0" : "activá el switch ↓"}
+                  />
+                </div>
+                <small>MRR = ARR / 12 · misma moneda que el valor.</small>
+              </label>
+            </div>
+
+            <label className={`seq-testtoggle ${isRecurring ? "is-on" : ""}`}>
+              <input type="checkbox" checked={isRecurring} onChange={(e) => setIsRecurring(e.target.checked)} />
+              <span className="seq-testtoggle__sw" />
+              <span><b>SaaS recurrente</b> — este trato factura un ARR anual (activa el campo de arriba).</span>
+            </label>
+
+            {/* Prioridad: probabilidad + estratégico en una sola fila */}
+            <div className="deal-edit-modal__row" style={{ alignItems: "flex-end" }}>
+              <label className="deal-edit-modal__field" style={{ flex: "0 0 150px" }}>
+                <span>Probability % <small>(override)</small></span>
+                <input
+                  type="number"
+                  value={probPct}
+                  onChange={(e) => setProbPct(Math.max(0, Math.min(100, parseInt(e.target.value || "0", 10))))}
+                  min={0}
+                  max={100}
+                  className="mono"
+                />
+              </label>
+              <label className={`seq-testtoggle ${strategic ? "is-on" : ""}`} style={{ flex: 1, marginBottom: 1 }}>
+                <input type="checkbox" checked={strategic} onChange={(e) => setStrategic(e.target.checked)} />
+                <span className="seq-testtoggle__sw" />
+                <span><b>★ Estratégico</b> — marca este lead/proyecto como prioritario.</span>
+              </label>
+            </div>
+          </div>
+
+          {/* ─── Fechas: cierre + proyecto, todas juntas ─── */}
+          <div className="deal-edit-modal__section">
+            <h3><Icon name="calendar" size={12} /> Fechas</h3>
+            <div className="deal-edit-modal__row">
               <label className="deal-edit-modal__field" style={{ flex: 1 }}>
                 <span>Cierre estimado</span>
                 <input type="date" value={closeAt} onChange={(e) => setCloseAt(e.target.value)} />
               </label>
-            </div>
-
-            {/* SaaS / recurrencia — contiguo al valor */}
-            <div className="deal-edit-modal__row">
-              <label className="deal-edit-modal__field deal-edit-modal__field--check" style={{ flex: 0 }}>
-                <input type="checkbox" checked={isRecurring} onChange={(e) => setIsRecurring(e.target.checked)} />
-                <span>SaaS recurrente</span>
-              </label>
-              <label className="deal-edit-modal__field" style={{ flex: 1 }}>
-                <span>ARR (anual) <small>({ccy === "PEN" ? "S/" : "$"})</small></span>
-                <div className={`money-wrap ${!isRecurring ? "is-disabled" : ""}`.trim()}>
-                  <span className="money-wrap__cur">{ccy === "PEN" ? "S/" : "$"}</span>
-                  <input type="number" value={arr} onChange={(e) => setArr(e.target.value)} min={0} step="0.01" className="mono" disabled={!isRecurring} />
-                </div>
-                <small>MRR = ARR / 12. Se usa sólo si es recurrente.</small>
-              </label>
-            </div>
-
-            {/* Fechas de proyecto */}
-            <div className="deal-edit-modal__row">
               <label className="deal-edit-modal__field" style={{ flex: 1 }}>
                 <span>Inicio de proyecto</span>
                 <input type="date" value={projStart} onChange={(e) => setProjStart(e.target.value)} />
@@ -1176,28 +1209,13 @@ function DealEditModal({
                 <input type="date" value={projEnd} onChange={(e) => setProjEnd(e.target.value)} />
               </label>
             </div>
+            <small className="deal-edit-modal__hint-dates">El setup se reparte entre inicio y fin; el SaaS factura desde el fin del proyecto.</small>
+          </div>
 
+          {/* ─── Tags ─── */}
+          <div className="deal-edit-modal__section">
+            <h3><Icon name="template" size={12} /> Tags</h3>
             <label className="deal-edit-modal__field">
-              <span>Probability % <small>(override · la etapa se elige con los chips de arriba)</small></span>
-              <input
-                type="number"
-                value={probPct}
-                onChange={(e) => setProbPct(Math.max(0, Math.min(100, parseInt(e.target.value || "0", 10))))}
-                min={0}
-                max={100}
-                className="mono"
-                style={{ maxWidth: 160 }}
-              />
-            </label>
-
-            <label className={`seq-testtoggle ${strategic ? "is-on" : ""}`} style={{ marginBottom: 10 }}>
-              <input type="checkbox" checked={strategic} onChange={(e) => setStrategic(e.target.checked)} />
-              <span className="seq-testtoggle__sw" />
-              <span><b>★ Estratégico</b> — marca este lead/proyecto como prioritario.</span>
-            </label>
-
-            <label className="deal-edit-modal__field">
-              <span>Tags / palabras clave</span>
               <TagsEditor value={tags} onChange={setTags} />
               <small>Sector, tipo de lead, cliente… Enter o coma para agregar.</small>
             </label>
