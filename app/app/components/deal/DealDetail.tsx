@@ -5,8 +5,8 @@ import { Chip } from "../ui/Chip";
 import { Tabs } from "../ui/Tabs";
 import { Card } from "../ui/Card";
 import { Combobox } from "../ui/Combobox";
-import { useActiveWorkspace, useAppStore, useAllCompanies, useCurrentUser, useWorkspaceLoaderData } from "../../lib/store";
-import { fmtMoneyFull, daysFromToday } from "../../lib/format";
+import { useActiveWorkspace, useAppStore, useAllCompanies, useCurrentUser, useWorkspaceLoaderData, type Currency } from "../../lib/store";
+import { fmtMoneyFull, daysFromToday, EXCHANGE_RATES } from "../../lib/format";
 import { templates } from "../../lib/mock/rich";
 import { tagColor } from "../../lib/tags";
 import { TagsEditor } from "../ui/TagsEditor";
@@ -925,9 +925,17 @@ function DealEditModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // ── Moneda del formulario (default = filtro USD/PEN del topbar) ──
+  // El trato guarda SIEMPRE USD; acá se muestra/edita en la moneda elegida y
+  // se convierte de vuelta a USD al guardar.
+  const displayCurrency = useAppStore((s) => s.currency);
+  const [ccy, setCcy] = useState<Currency>(displayCurrency);
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  const toCcy = (usd: number, c: Currency) => r2(usd * EXCHANGE_RATES[c]);
+
   // ── Estado del trato ──
   const [name, setName] = useState(deal.name);
-  const [value, setValue] = useState(String(deal.value));
+  const [value, setValue] = useState(String(toCcy(deal.value, displayCurrency)));
   const [closeAt, setCloseAt] = useState(new Date(deal.estimatedCloseAt).toISOString().slice(0, 10));
   const toDateInput = (d?: string | null) => (d ? new Date(d).toISOString().slice(0, 10) : "");
   const [projStart, setProjStart] = useState(toDateInput(deal.projectStartAt));
@@ -937,7 +945,21 @@ function DealEditModal({
   const [ownerId, setOwnerId] = useState(deal.ownerId ?? "");
   const [companyId, setCompanyId] = useState(deal.companyId ?? "");
   const [isRecurring, setIsRecurring] = useState(deal.isRecurring);
-  const [arr, setArr] = useState(String(deal.arr || 0));
+  const [arr, setArr] = useState(String(toCcy(deal.arr || 0, displayCurrency)));
+
+  // Cambiar la moneda convierte los montos tipeados (mantiene el equivalente).
+  const onCcyChange = (next: Currency) => {
+    if (next === ccy) return;
+    const conv = (s: string) => {
+      const n = parseFloat(s);
+      if (!Number.isFinite(n)) return s;
+      const usd = n / EXCHANGE_RATES[ccy];
+      return String(r2(usd * EXCHANGE_RATES[next]));
+    };
+    setValue((v) => conv(v));
+    setArr((a) => conv(a));
+    setCcy(next);
+  };
   const [source, setSource] = useState(deal.source ?? "");
   const [strategic, setStrategic] = useState(!!deal.strategic);
   const [ai, setAi] = useState(String(deal.ai));
@@ -1040,7 +1062,9 @@ function DealEditModal({
       const df = new FormData();
       df.set("id", deal.id);
       df.set("name", name);
-      df.set("value", value);
+      // value/arr se tipean en `ccy` → convertir a USD (lo que guarda la DB)
+      const toUSD = (s: string) => String(r2((parseFloat(s) || 0) / EXCHANGE_RATES[ccy]));
+      df.set("value", toUSD(value));
       df.set("estimatedCloseAt", closeAt);
       df.set("stage", stage);
       df.set("probability", (probPct / 100).toFixed(2));
@@ -1048,7 +1072,7 @@ function DealEditModal({
       df.set("source", source);
       df.set("strategic", strategic ? "true" : "false");
       df.set("isRecurring", isRecurring ? "true" : "false");
-      df.set("arr", arr);
+      df.set("arr", toUSD(arr));
       df.set("tags", tags.join(","));
       df.set("projectStartAt", projStart);
       df.set("projectEndAt", projEnd);
@@ -1086,13 +1110,13 @@ function DealEditModal({
         <div className="deal-edit-modal__body">
           {/* ─── Etapa (selección rápida con chips) ─── */}
           <div className="deal-edit-modal__section">
-            <h3>Etapa</h3>
+            <h3><Icon name="kanban" size={12} /> Etapa</h3>
             <StageChips stages={stages} currentId={stage} onChange={setStage} />
           </div>
 
           {/* ─── Datos comerciales ─── */}
           <div className="deal-edit-modal__section">
-            <h3>Datos comerciales</h3>
+            <h3><Icon name="dollar" size={12} /> Datos comerciales</h3>
             <div className="deal-edit-modal__row">
               <label className="deal-edit-modal__field" style={{ flex: 2 }}>
                 <span>Nombre del trato</span>
@@ -1108,7 +1132,16 @@ function DealEditModal({
             <div className="deal-edit-modal__row">
               <label className="deal-edit-modal__field" style={{ flex: 1 }}>
                 <span>Valor (setup)</span>
-                <input type="number" value={value} onChange={(e) => setValue(e.target.value)} min={0} step="0.01" className="mono" />
+                <div className="money-wrap">
+                  <select value={ccy} onChange={(e) => onCcyChange(e.target.value as Currency)} aria-label="Moneda" title="Moneda en la que estás editando los montos">
+                    <option value="USD">USD $</option>
+                    <option value="PEN">PEN S/</option>
+                  </select>
+                  <input type="number" value={value} onChange={(e) => setValue(e.target.value)} min={0} step="0.01" className="mono" />
+                </div>
+                {ccy === "PEN" && (
+                  <small>≈ ${r2((parseFloat(value) || 0) / EXCHANGE_RATES.PEN).toLocaleString("en-US")} · TC {EXCHANGE_RATES.PEN} (se guarda en USD)</small>
+                )}
               </label>
               <label className="deal-edit-modal__field" style={{ flex: 1 }}>
                 <span>Cierre estimado</span>
@@ -1123,8 +1156,11 @@ function DealEditModal({
                 <span>SaaS recurrente</span>
               </label>
               <label className="deal-edit-modal__field" style={{ flex: 1 }}>
-                <span>ARR (anual)</span>
-                <input type="number" value={arr} onChange={(e) => setArr(e.target.value)} min={0} step="0.01" className="mono" disabled={!isRecurring} />
+                <span>ARR (anual) <small>({ccy === "PEN" ? "S/" : "$"})</small></span>
+                <div className={`money-wrap ${!isRecurring ? "is-disabled" : ""}`.trim()}>
+                  <span className="money-wrap__cur">{ccy === "PEN" ? "S/" : "$"}</span>
+                  <input type="number" value={arr} onChange={(e) => setArr(e.target.value)} min={0} step="0.01" className="mono" disabled={!isRecurring} />
+                </div>
                 <small>MRR = ARR / 12. Se usa sólo si es recurrente.</small>
               </label>
             </div>
@@ -1169,7 +1205,7 @@ function DealEditModal({
 
           {/* ─── Asignación: Grupo + Owner + Empresa ─── */}
           <div className="deal-edit-modal__section">
-            <h3>Asignación</h3>
+            <h3><Icon name="users" size={12} /> Asignación</h3>
             <div className="deal-edit-modal__row">
               <label className="deal-edit-modal__field" style={{ flex: 1 }}>
                 <span>Grupo {isAdmin ? <small>(podés mover)</small> : <small>(solo admin mueve)</small>}</span>
@@ -1220,7 +1256,7 @@ function DealEditModal({
 
           {/* ─── Cliente (SUNAT) — solo RUC, razón social e industria ─── */}
           <div className="deal-edit-modal__section">
-            <h3>Cliente · datos SUNAT</h3>
+            <h3><Icon name="database" size={12} /> Cliente · datos SUNAT</h3>
             <div className="deal-edit-modal__row">
               <label className="deal-edit-modal__field" style={{ flex: 1 }}>
                 <span>RUC</span>
@@ -1239,7 +1275,7 @@ function DealEditModal({
 
           {/* ─── Avanzado ─── */}
           <div className="deal-edit-modal__section">
-            <h3>Avanzado</h3>
+            <h3><Icon name="settings" size={12} /> Avanzado</h3>
             <div className="deal-edit-modal__row">
               <label className="deal-edit-modal__field" style={{ flex: 1 }}>
                 <span>Source / canal de origen</span>

@@ -2694,7 +2694,19 @@ a.nav-item.is-active { color: var(--fg); }
   margin: 0 0 10px;
   padding-bottom: 6px;
   border-bottom: 1px solid var(--border-2);
+  display: flex;
+  align-items: center;
+  gap: 7px;
 }
+.deal-edit-modal__section h3 svg { color: var(--accent); flex-shrink: 0; }
+
+/* Input de dinero con selector/prefijo de moneda (modal Editar trato y otros) */
+.money-wrap { display: flex; align-items: stretch; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); overflow: hidden; transition: border-color .12s, box-shadow .12s; }
+.money-wrap:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(99,102,241,.12); }
+.money-wrap.is-disabled { opacity: .6; }
+.money-wrap select { border: none; outline: none; cursor: pointer; padding: 0 4px 0 10px; background: var(--bg-2); border-right: 1px solid var(--border); font: inherit; font-size: 11.5px; font-weight: 600; color: var(--fg-2); max-width: 96px; }
+.money-wrap__cur { display: inline-flex; align-items: center; padding: 0 10px; background: var(--bg-2); border-right: 1px solid var(--border); font-size: 11.5px; font-weight: 600; color: var(--fg-3); white-space: nowrap; }
+.money-wrap input { flex: 1; border: none !important; outline: none !important; box-shadow: none !important; padding: 8px 10px; font: inherit; font-size: 13px; background: transparent; color: var(--fg); width: 100%; min-width: 0; }
 .deal-edit-modal__row {
   display: flex;
   gap: 12px;
